@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react'
 import { Transaction, TransactionList, TransactionGroup } from '@/types'
 import Modal from '@/components/ui/Modal'
-import { Plus, ChevronDown } from 'lucide-react'
-import clsx from 'clsx'
+import { Plus, Sparkles } from 'lucide-react'
 
 interface ClassificationModalProps {
   transaction?: Transaction
   bulkIds?: string[]
+  sampleTransaction?: Transaction
   lists: TransactionList[]
   groups: TransactionGroup[]
   onClose: () => void
@@ -21,6 +21,7 @@ type ApplyScope = 'single' | 'all_existing' | 'all_existing_and_future'
 export default function ClassificationModal({
   transaction,
   bulkIds,
+  sampleTransaction,
   lists,
   groups,
   onClose,
@@ -42,17 +43,45 @@ export default function ClassificationModal({
   const [newGroupName, setNewGroupName] = useState('')
   const [addingGroup, setAddingGroup] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
 
   const filteredGroups = groups.filter(g => g.listName === selectedList)
 
   // Show scope question when list/group changes (not for bulk)
   useEffect(() => {
     if (!isBulk && transaction && (selectedList !== transaction.listName || selectedGroup !== transaction.groupName)) {
-      if (transaction.counterparty || transaction.merchant) {
+      if (transaction.counterparty || transaction.merchant || transaction.description) {
         setShowScopeQuestion(true)
       }
     }
   }, [selectedList, selectedGroup, isBulk, transaction])
+
+  const handleAISuggest = async () => {
+    const tx = transaction || sampleTransaction
+    if (!tx) return
+    setSuggesting(true)
+    try {
+      const res = await fetch('/api/classify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: tx.description,
+          counterparty: tx.counterparty,
+          merchant: tx.merchant,
+          amount: tx.amount,
+          direction: tx.direction,
+        }),
+      })
+      if (res.ok) {
+        const { listName, groupName } = await res.json()
+        if (listName) setSelectedList(listName)
+        if (groupName) setSelectedGroup(groupName)
+        else setSelectedGroup('')
+      }
+    } finally {
+      setSuggesting(false)
+    }
+  }
 
   const handleAddList = async () => {
     if (!newListName.trim()) return
@@ -101,18 +130,20 @@ export default function ClassificationModal({
       }
 
       if (isBulk) {
-        await fetch('/api/transactions/bulk', {
+        const res = await fetch('/api/transactions/bulk', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids: bulkIds, ...payload }),
         })
+        if (!res.ok) throw new Error('Bulk update mislukt')
       } else if (transaction) {
         // Update single transaction
-        await fetch('/api/transactions', {
+        const res = await fetch('/api/transactions', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: transaction.id, ...payload }),
         })
+        if (!res.ok) throw new Error('Update mislukt')
 
         // Apply to other transactions based on scope
         if (applyScope !== 'single' && (transaction.counterparty || transaction.merchant || transaction.description)) {
@@ -182,6 +213,18 @@ export default function ClassificationModal({
             </div>
             <div className="text-slate-500 mt-0.5">{transaction.transactionDate} · {transaction.amount > 0 ? '+' : ''}{transaction.amount.toFixed(2)} {transaction.currency}</div>
           </div>
+        )}
+
+        {/* AI suggestion */}
+        {(transaction || sampleTransaction) && (
+          <button
+            onClick={handleAISuggest}
+            disabled={suggesting}
+            className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700 disabled:opacity-50"
+          >
+            <Sparkles size={14} />
+            {suggesting ? 'AI denkt na...' : 'AI-suggestie'}
+          </button>
         )}
 
         {/* List selector */}
@@ -322,7 +365,8 @@ export default function ClassificationModal({
         {showScopeQuestion && !isBulk && (
           <div className="border border-amber-200 bg-amber-50 rounded-xl p-3">
             <p className="text-sm font-medium text-amber-800 mb-2">
-              Wil je dit toepassen op alle transacties van deze tegenpartij?
+              Wil je dit toepassen op alle transacties van{' '}
+              <span className="italic">{transaction?.merchant || transaction?.counterparty || transaction?.description}</span>?
             </p>
             <div className="space-y-1.5">
               {[

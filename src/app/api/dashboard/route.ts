@@ -34,6 +34,21 @@ export async function GET() {
       ORDER BY total DESC
     `).all()
 
+    // Expense breakdown by list + group (current month)
+    const expensesByGroup = db.prepare(`
+      SELECT
+        COALESCE(listName, 'Ongecategoriseerd') as listName,
+        COALESCE(groupName, '') as groupName,
+        SUM(ABS(amount)) as total,
+        COUNT(*) as count
+      FROM transactions
+      WHERE isDeleted = 0
+        AND direction = 'expense'
+        AND strftime('%Y-%m', transactionDate) = strftime('%Y-%m', 'now')
+      GROUP BY listName, groupName
+      ORDER BY listName, total DESC
+    `).all()
+
     // Income breakdown current month
     const incomeByList = db.prepare(`
       SELECT
@@ -78,6 +93,7 @@ export async function GET() {
     return NextResponse.json({
       monthlyStats,
       expensesByList,
+      expensesByGroup,
       incomeByList,
       uncategorized,
       recurring,

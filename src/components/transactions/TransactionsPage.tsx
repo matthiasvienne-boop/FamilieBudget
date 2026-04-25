@@ -9,6 +9,7 @@ import { getLast12Months, formatMonth } from '@/lib/utils'
 import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import ClassificationModal from '@/components/transactions/ClassificationModal'
+import BulkAIModal from '@/components/transactions/BulkAIModal'
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,6 +21,7 @@ import {
   RepeatIcon,
   X,
   ChevronDown,
+  Sparkles,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -57,6 +59,7 @@ function TransactionsPageInner() {
   const [showFilters, setShowFilters] = useState(false)
   const [classifyTx, setClassifyTx] = useState<Transaction | null>(null)
   const [classifyBulk, setClassifyBulk] = useState(false)
+  const [bulkAI, setBulkAI] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const months = getLast12Months()
@@ -257,6 +260,13 @@ function TransactionsPageInner() {
             >
               <Tag size={14} />
               Categoriseren
+            </button>
+            <button
+              onClick={() => setBulkAI(true)}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 text-purple-700"
+            >
+              <Sparkles size={14} />
+              AI item per item
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
@@ -477,11 +487,24 @@ function TransactionsPageInner() {
       {classifyBulk && (
         <ClassificationModal
           bulkIds={Array.from(selected)}
+          sampleTransaction={transactions.find(t => selected.has(t.id))}
           lists={lists}
           groups={groups}
           onClose={() => setClassifyBulk(false)}
           onSaved={handleClassified}
           onListsUpdated={(l, g) => { setLists(l); setGroups(g) }}
+        />
+      )}
+
+      {/* Bulk AI modal */}
+      {bulkAI && (
+        <BulkAIModal
+          txIds={Array.from(selected)}
+          transactions={transactions}
+          lists={lists}
+          groups={groups}
+          onClose={() => setBulkAI(false)}
+          onDone={() => { setBulkAI(false); setSelected(new Set()); fetchTransactions() }}
         />
       )}
 

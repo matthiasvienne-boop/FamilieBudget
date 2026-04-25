@@ -20,12 +20,91 @@ interface CategoryBreakdown {
   count: number
 }
 
+interface GroupBreakdown {
+  listName: string
+  groupName: string
+  total: number
+  count: number
+}
+
 interface DashboardData {
   monthlyStats: MonthlyStats[]
   expensesByList: CategoryBreakdown[]
+  expensesByGroup: GroupBreakdown[]
   incomeByList: CategoryBreakdown[]
   uncategorized: number
   topMerchants: Array<{ name: string; total: number; count: number }>
+}
+
+function IncomeExpenseChart({ stats }: { stats: MonthlyStats[] }) {
+  const W = 600
+  const H = 160
+  const PAD = { top: 16, right: 16, bottom: 28, left: 52 }
+  const innerW = W - PAD.left - PAD.right
+  const innerH = H - PAD.top - PAD.bottom
+
+  const maxVal = Math.max(...stats.flatMap(s => [s.income, s.expenses]), 1)
+
+  const xStep = innerW / Math.max(stats.length - 1, 1)
+  const yScale = (v: number) => innerH - (v / maxVal) * innerH
+
+  const toPath = (vals: number[]) =>
+    vals.map((v, i) => `${i === 0 ? 'M' : 'L'} ${i * xStep} ${yScale(v)}`).join(' ')
+
+  const incomePoints = stats.map(s => s.income)
+  const expensePoints = stats.map(s => s.expenses)
+
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => ({
+    y: yScale(maxVal * f),
+    label: formatEuro(maxVal * f),
+  }))
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h2 className="font-semibold text-slate-800">Inkomsten vs uitgaven</h2>
+        <div className="flex items-center gap-4 text-xs text-slate-500">
+          <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-green-500 inline-block rounded" /> Inkomsten</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-500 inline-block rounded" /> Uitgaven</span>
+        </div>
+      </div>
+      <div className="p-4 overflow-x-auto">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: '320px', height: '160px' }}>
+          <g transform={`translate(${PAD.left},${PAD.top})`}>
+            {/* Y gridlines */}
+            {yTicks.map((t, i) => (
+              <g key={i}>
+                <line x1={0} y1={t.y} x2={innerW} y2={t.y} stroke="#f1f5f9" strokeWidth={1} />
+                <text x={-6} y={t.y + 4} textAnchor="end" fontSize={9} fill="#94a3b8">{t.label}</text>
+              </g>
+            ))}
+
+            {/* Lines */}
+            <path d={toPath(incomePoints)} fill="none" stroke="#22c55e" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            <path d={toPath(expensePoints)} fill="none" stroke="#ef4444" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+
+            {/* Dots */}
+            {incomePoints.map((v, i) => (
+              <circle key={i} cx={i * xStep} cy={yScale(v)} r={3} fill="#22c55e" />
+            ))}
+            {expensePoints.map((v, i) => (
+              <circle key={i} cx={i * xStep} cy={yScale(v)} r={3} fill="#ef4444" />
+            ))}
+
+            {/* X labels */}
+            {stats.map((s, i) => {
+              const [y, m] = s.month.split('-')
+              return (
+                <text key={i} x={i * xStep} y={innerH + 18} textAnchor="middle" fontSize={9} fill="#94a3b8">
+                  {m}/{y.slice(2)}
+                </text>
+              )
+            })}
+          </g>
+        </svg>
+      </div>
+    </div>
+  )
 }
 
 function StatCard({
@@ -124,6 +203,11 @@ export default function DashboardContent() {
         />
       </div>
 
+      {/* Income vs Expenses chart */}
+      {data.monthlyStats.length > 1 && (
+        <IncomeExpenseChart stats={[...data.monthlyStats].reverse()} />
+      )}
+
       <div className="grid md:grid-cols-2 gap-6">
         {/* Monthly overview table */}
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
@@ -165,25 +249,38 @@ export default function DashboardContent() {
             <h2 className="font-semibold text-slate-800">Uitgaven per categorie</h2>
             <p className="text-xs text-slate-400">Huidige maand</p>
           </div>
-          <div className="p-4 space-y-3">
+          <div className="p-4 space-y-4">
             {data.expensesByList.length === 0 && (
               <p className="text-slate-400 text-sm text-center py-4">Geen uitgaven gevonden</p>
             )}
             {data.expensesByList.slice(0, 8).map(cat => {
               const maxTotal = data.expensesByList[0]?.total || 1
               const pct = Math.round((cat.total / maxTotal) * 100)
+              const groups = data.expensesByGroup.filter(
+                g => g.listName === cat.listName && g.groupName !== ''
+              )
               return (
                 <div key={cat.listName}>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-slate-700 font-medium truncate mr-2">{cat.listName}</span>
-                    <span className="text-slate-500 shrink-0">{formatEuro(cat.total)}</span>
+                    <span className="text-slate-700 font-semibold truncate mr-2">{cat.listName}</span>
+                    <span className="text-slate-600 shrink-0 font-medium">{formatEuro(cat.total)}</span>
                   </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
                     <div
                       className="h-full bg-blue-500 rounded-full transition-all"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
+                  {groups.length > 0 && (
+                    <div className="pl-3 border-l-2 border-slate-100 space-y-1">
+                      {groups.map(g => (
+                        <div key={g.groupName} className="flex items-center justify-between text-xs">
+                          <span className="text-slate-500 truncate mr-2">{g.groupName}</span>
+                          <span className="text-slate-400 shrink-0">{formatEuro(g.total)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}

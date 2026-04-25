@@ -102,6 +102,35 @@ function initSchema(db: Database.Database) {
       transactionCount INTEGER NOT NULL DEFAULT 0,
       duplicateCount INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS budget_goals (
+      id TEXT PRIMARY KEY,
+      listName TEXT NOT NULL,
+      groupName TEXT NOT NULL DEFAULT '',
+      month TEXT NOT NULL DEFAULT '',
+      goalAmount REAL NOT NULL,
+      direction TEXT NOT NULL DEFAULT 'expense',
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      UNIQUE(listName, groupName, month)
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      passwordHash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      isActive INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
   `)
 
   seedDefaultLists(db)

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { TransactionList, TransactionGroup, ClassificationRule } from '@/types'
-import { Plus, Trash2, Edit2, Check, X, ChevronRight, Tag, Zap } from 'lucide-react'
+import { Plus, Trash2, Edit2, Check, X, ChevronRight, Tag, Zap, Users, Sparkles, LogOut } from 'lucide-react'
 import clsx from 'clsx'
 
 const COLORS = [
@@ -10,7 +10,16 @@ const COLORS = [
   '#06b6d4', '#f97316', '#84cc16', '#14b8a6', '#6366f1', '#94a3b8', '#ef4444',
 ]
 
-type Tab = 'lists' | 'rules'
+type Tab = 'lists' | 'rules' | 'users' | 'ai'
+
+interface User {
+  id: string
+  email: string
+  name: string
+  role: string
+  isActive: number
+  createdAt: string
+}
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>('lists')
@@ -42,15 +51,43 @@ export default function SettingsPage() {
   })
   const [addingRule, setAddingRule] = useState(false)
 
+  // Users tab
+  const [users, setUsers] = useState<User[]>([])
+  const [addingUser, setAddingUser] = useState(false)
+  const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'member' })
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null)
+
+  // AI tab
+  const [apiKey, setApiKey] = useState('')
+  const [apiKeySaved, setApiKeySaved] = useState(false)
+  const [loadingApiKey, setLoadingApiKey] = useState(false)
+
   const reload = async () => {
-    const [listsRes, rulesRes] = await Promise.all([
+    const [listsRes, rulesRes, meRes] = await Promise.all([
       fetch('/api/lists').then(r => r.json()),
       fetch('/api/rules').then(r => r.json()),
+      fetch('/api/auth/me').then(r => r.ok ? r.json() : null),
     ])
     setLists(listsRes.lists || [])
     setGroups(listsRes.groups || [])
     setRules(rulesRes)
+    if (meRes) setCurrentUser(meRes)
     setLoading(false)
+  }
+
+  const reloadUsers = async () => {
+    const res = await fetch('/api/auth/users')
+    if (res.ok) setUsers(await res.json())
+  }
+
+  const reloadApiKey = async () => {
+    setLoadingApiKey(true)
+    const res = await fetch('/api/settings/anthropic-key')
+    if (res.ok) {
+      const data = await res.json()
+      setApiKey(data.masked || '')
+    }
+    setLoadingApiKey(false)
   }
 
   useEffect(() => { reload() }, [])
@@ -141,25 +178,28 @@ export default function SettingsPage() {
       <p className="text-slate-500 text-sm mb-6">Beheer uw lijsten, groepen en classificatieregels</p>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-6 w-fit">
-        <button
-          onClick={() => setTab('lists')}
-          className={clsx(
-            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-            tab === 'lists' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          )}
-        >
-          <Tag size={15} /> Lijsten & Groepen
-        </button>
-        <button
-          onClick={() => setTab('rules')}
-          className={clsx(
-            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-            tab === 'rules' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          )}
-        >
-          <Zap size={15} /> Classificatieregels
-        </button>
+      <div className="flex flex-wrap gap-1 bg-slate-100 rounded-xl p-1 mb-6">
+        {[
+          { id: 'lists', label: 'Lijsten & Groepen', icon: Tag },
+          { id: 'rules', label: 'Regels', icon: Zap },
+          { id: 'users', label: 'Gebruikers', icon: Users },
+          { id: 'ai', label: 'AI', icon: Sparkles },
+        ].map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => {
+              setTab(id as Tab)
+              if (id === 'users') reloadUsers()
+              if (id === 'ai') reloadApiKey()
+            }}
+            className={clsx(
+              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              tab === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            )}
+          >
+            <Icon size={15} /> {label}
+          </button>
+        ))}
       </div>
 
       {/* LISTS & GROUPS TAB */}
@@ -456,6 +496,166 @@ export default function SettingsPage() {
               <Plus size={16} /> Nieuwe regel aanmaken
             </button>
           )}
+        </div>
+      )}
+      {/* USERS TAB */}
+      {tab === 'users' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-500">Beheer gezinsleden die toegang hebben tot FamilieBudget.</p>
+            <button
+              onClick={async () => {
+                await fetch('/api/auth/logout', { method: 'POST' })
+                window.location.href = '/auth/login'
+              }}
+              className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-red-600 border border-slate-200 rounded-lg px-3 py-1.5"
+            >
+              <LogOut size={13} /> Afmelden
+            </button>
+          </div>
+
+          {users.map(user => (
+            <div key={user.id} className="bg-white rounded-xl border border-slate-100 px-4 py-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-medium text-slate-800">{user.name}</div>
+                <div className="text-xs text-slate-500">{user.email} · {user.role === 'admin' ? 'Beheerder' : 'Lid'}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                {!user.isActive && <span className="text-xs text-red-500 border border-red-200 rounded-full px-2 py-0.5">Inactief</span>}
+                {currentUser?.role === 'admin' && user.id !== currentUser?.id && (
+                  <button
+                    onClick={async () => {
+                      await fetch('/api/auth/users', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: user.id, isActive: !user.isActive }),
+                      })
+                      reloadUsers()
+                    }}
+                    className="text-xs text-slate-400 hover:text-slate-600 border border-slate-200 rounded-lg px-2 py-1"
+                  >
+                    {user.isActive ? 'Deactiveren' : 'Activeren'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {currentUser?.role === 'admin' && (
+            addingUser ? (
+              <div className="bg-white rounded-xl border border-blue-200 p-4 space-y-3">
+                <h3 className="font-medium text-slate-800 text-sm">Nieuw gezinslid toevoegen</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">Naam</label>
+                    <input value={newUser.name} onChange={e => setNewUser(u => ({ ...u, name: e.target.value }))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Voornaam" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">Rol</label>
+                    <select value={newUser.role} onChange={e => setNewUser(u => ({ ...u, role: e.target.value }))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                      <option value="member">Lid</option>
+                      <option value="admin">Beheerder</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">E-mailadres</label>
+                  <input type="email" value={newUser.email} onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="naam@voorbeeld.be" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Wachtwoord</label>
+                  <input type="password" value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Minstens 6 tekens" />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      const res = await fetch('/api/auth/users', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newUser),
+                      })
+                      if (res.ok) {
+                        setNewUser({ name: '', email: '', password: '', role: 'member' })
+                        setAddingUser(false)
+                        reloadUsers()
+                      } else {
+                        const err = await res.json()
+                        alert(err.error || 'Aanmaken mislukt')
+                      }
+                    }}
+                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                  >
+                    Aanmaken
+                  </button>
+                  <button onClick={() => setAddingUser(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm text-slate-600">
+                    Annuleren
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAddingUser(true)}
+                className="flex items-center gap-2 w-full px-4 py-3 bg-white border border-dashed border-slate-200 rounded-xl text-sm text-slate-500 hover:border-blue-300 hover:text-blue-600 transition-colors"
+              >
+                <Plus size={16} /> Gezinslid toevoegen
+              </button>
+            )
+          )}
+        </div>
+      )}
+
+      {/* AI TAB */}
+      {tab === 'ai' && (
+        <div className="space-y-4">
+          <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 text-sm text-purple-800">
+            <p className="font-medium mb-1">AI-classificatie met Claude</p>
+            <p className="text-purple-600">Voeg je Anthropic API-sleutel toe om automatische categoriesuggesties te activeren bij het klasseren van transacties.</p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-100 p-4 space-y-3">
+            <label className="block text-sm font-medium text-slate-700">Anthropic API-sleutel</label>
+            {loadingApiKey ? (
+              <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={e => { setApiKey(e.target.value); setApiKeySaved(false) }}
+                  placeholder="sk-ant-..."
+                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"
+                />
+                <button
+                  onClick={async () => {
+                    const res = await fetch('/api/settings/anthropic-key', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ key: apiKey }),
+                    })
+                    if (res.ok) setApiKeySaved(true)
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                >
+                  {apiKeySaved ? '✓ Opgeslagen' : 'Opslaan'}
+                </button>
+              </div>
+            )}
+            <p className="text-xs text-slate-400">De sleutel wordt versleuteld opgeslagen in de database.</p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-100 p-4">
+            <p className="text-sm font-medium text-slate-700 mb-1">Hoe werkt het?</p>
+            <ul className="text-sm text-slate-500 space-y-1 list-disc list-inside">
+              <li>Open een transactie en klik op "AI-suggestie"</li>
+              <li>Claude analyseert de omschrijving, handelaar en tegenpartij</li>
+              <li>De lijst en groep worden automatisch ingevuld</li>
+              <li>Je bevestigt of past de suggestie aan voor het opslaan</li>
+            </ul>
+          </div>
         </div>
       )}
     </div>

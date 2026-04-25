@@ -42,6 +42,11 @@ function detectDirection(amount: number, type: string, description: string): Dir
   return amount >= 0 ? 'income' : 'expense'
 }
 
+function normalizeDescription(description: string): string {
+  // Strip trailing date from e.g. "Nettorente betaald aan 'X' vóór Nov 4, 2025"
+  return description.replace(/\s+vóór\s+\w+\s+\d+,\s+\d{4}$/, '').trim()
+}
+
 function extractMerchant(description: string, type: string): string | null {
   const t = type.toLowerCase()
   if (t.includes('kaartbetaling') || t.includes('rev-betaling')) {
@@ -77,7 +82,7 @@ export function parseRevolutCSV(
     const amount = parseAmount(row['Bedrag'])
     const fees = parseAmount(row['Kosten'])
     const balance = parseAmount(row['Saldo'])
-    const description = row['Beschrijving'] || ''
+    const description = normalizeDescription(row['Beschrijving'] || '')
     const transactionType = row['Type'] || ''
 
     const direction = detectDirection(amount, transactionType, description)

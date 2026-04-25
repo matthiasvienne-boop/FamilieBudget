@@ -8,12 +8,14 @@ import {
   Upload,
   Settings,
   RepeatIcon,
+  Target,
 } from 'lucide-react'
 import clsx from 'clsx'
 
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/transactions', label: 'Transacties', icon: ArrowLeftRight },
+  { href: '/budget', label: 'Budget', icon: Target },
   { href: '/import', label: 'Importeren', icon: Upload },
   { href: '/recurring', label: 'Recurring', icon: RepeatIcon },
   { href: '/settings', label: 'Instellingen', icon: Settings },

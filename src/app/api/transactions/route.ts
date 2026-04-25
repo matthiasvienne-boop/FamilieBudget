@@ -86,6 +86,8 @@ export async function PATCH(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
     const now = new Date().toISOString()
+    if ('isRecurring' in updates) updates.isRecurring = updates.isRecurring ? 1 : 0
+
     const fields = Object.keys(updates)
       .map(k => `${k} = ?`)
       .join(', ')

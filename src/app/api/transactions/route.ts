@@ -8,7 +8,7 @@ const ALLOWED_UPDATE_FIELDS = new Set([
 ])
 
 export async function GET(request: NextRequest) {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
@@ -59,6 +59,9 @@ export async function GET(request: NextRequest) {
       where += ` AND "accountId" = ${add(accountId)}`
     }
 
+    // Access control: only show transactions from accounts the user is a member of
+    where += ` AND ("accountId" IS NULL OR "accountId" IN (SELECT "accountId" FROM account_members WHERE "userId" = ${add(session.id)}))`
+
     void p // suppress unused warning
 
     const countResult = await db.query(`SELECT COUNT(*) as total FROM transactions ${where}`, params)
@@ -78,7 +81,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
@@ -102,7 +105,14 @@ export async function PATCH(request: NextRequest) {
     const add = (v: unknown) => { params.push(v); return `$${params.length}` }
     const fields = Object.entries(updates).map(([k, v]) => `"${k}" = ${add(v)}`).join(', ')
 
-    await db.query(`UPDATE transactions SET ${fields}, "updatedAt" = ${add(now)} WHERE id = ${add(id)}`, params)
+    const result = await db.query(
+      `UPDATE transactions SET ${fields}, "updatedAt" = ${add(now)}
+       WHERE id = ${add(id)}
+         AND ("accountId" IS NULL OR "accountId" IN (SELECT "accountId" FROM account_members WHERE "userId" = ${add(session.id)}))`,
+      params
+    )
+
+    if (result.rowCount === 0) return NextResponse.json({ error: 'Geen toegang of niet gevonden' }, { status: 403 })
 
     const tx = await db.query('SELECT * FROM transactions WHERE id = $1', [id])
     return NextResponse.json(tx.rows[0])
@@ -113,7 +123,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
@@ -124,7 +134,14 @@ export async function DELETE(request: NextRequest) {
     if (!id || typeof id !== 'string') return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
     const now = new Date().toISOString()
-    await db.query('UPDATE transactions SET "isDeleted" = true, "updatedAt" = $1 WHERE id = $2', [now, id])
+    const result = await db.query(
+      `UPDATE transactions SET "isDeleted" = true, "updatedAt" = $1
+       WHERE id = $2
+         AND ("accountId" IS NULL OR "accountId" IN (SELECT "accountId" FROM account_members WHERE "userId" = $3))`,
+      [now, id, session.id]
+    )
+
+    if (result.rowCount === 0) return NextResponse.json({ error: 'Geen toegang of niet gevonden' }, { status: 403 })
 
     return NextResponse.json({ success: true })
   } catch (error) {

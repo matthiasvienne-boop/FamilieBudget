@@ -2,25 +2,30 @@ import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { requireAuth } from '@/lib/api-auth'
 
+// $1 is always the userId — each query passes [userId] as params
+const ACCESS = `("accountId" IS NULL OR "accountId" IN (SELECT "accountId" FROM account_members WHERE "userId" = $1))`
+const ACCESS_T = `(t."accountId" IS NULL OR t."accountId" IN (SELECT "accountId" FROM account_members WHERE "userId" = $1))`
+
 const EXPENSE_CTE = `
   WITH expenses AS (
     SELECT "transactionDate", "listName", "groupName", ABS(amount) as amount
     FROM transactions
-    WHERE "isDeleted" = false AND direction = 'expense' AND "isSplit" = false
+    WHERE "isDeleted" = false AND direction = 'expense' AND "isSplit" = false AND ${ACCESS}
     UNION ALL
     SELECT t."transactionDate", s."listName", s."groupName", s.amount
     FROM transaction_splits s
     JOIN transactions t ON t.id = s."transactionId"
-    WHERE t."isDeleted" = false AND t.direction = 'expense'
+    WHERE t."isDeleted" = false AND t.direction = 'expense' AND ${ACCESS_T}
   )
 `
 
 export async function GET() {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
     const db = await getDb()
+    const uid = session.id
 
     const [monthlyStats, expensesByList, expensesByGroup, incomeByList, uncategorizedRes, recurring, topMerchants] =
       await Promise.all([
@@ -34,9 +39,10 @@ export async function GET() {
           FROM transactions
           WHERE "isDeleted" = false AND direction != 'transfer'
             AND "transactionDate" >= (CURRENT_DATE - INTERVAL '12 months')::text
+            AND ${ACCESS}
           GROUP BY LEFT("transactionDate", 7)
           ORDER BY LEFT("transactionDate", 7) DESC
-        `),
+        `, [uid]),
         db.query(`
           ${EXPENSE_CTE}
           SELECT
@@ -47,7 +53,7 @@ export async function GET() {
           WHERE LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
           GROUP BY "listName"
           ORDER BY total DESC
-        `),
+        `, [uid]),
         db.query(`
           ${EXPENSE_CTE}
           SELECT
@@ -59,7 +65,7 @@ export async function GET() {
           WHERE LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
           GROUP BY "listName", "groupName"
           ORDER BY "listName", total DESC
-        `),
+        `, [uid]),
         db.query(`
           SELECT
             COALESCE("listName", 'Ongecategoriseerd') as "listName",
@@ -68,19 +74,21 @@ export async function GET() {
           FROM transactions
           WHERE "isDeleted" = false AND direction = 'income'
             AND LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
+            AND ${ACCESS}
           GROUP BY "listName"
           ORDER BY total DESC
-        `),
+        `, [uid]),
         db.query(`
           SELECT COUNT(*) as count FROM transactions
           WHERE "isDeleted" = false AND "listName" IS NULL AND "isSplit" = false AND direction != 'transfer'
-        `),
+            AND ${ACCESS}
+        `, [uid]),
         db.query(`
           SELECT * FROM transactions
-          WHERE "isDeleted" = false AND "isRecurring" = true
+          WHERE "isDeleted" = false AND "isRecurring" = true AND ${ACCESS}
           ORDER BY "transactionDate" DESC
           LIMIT 50
-        `),
+        `, [uid]),
         db.query(`
           SELECT
             COALESCE(merchant, counterparty, description) as name,
@@ -89,10 +97,11 @@ export async function GET() {
           FROM transactions
           WHERE "isDeleted" = false AND direction = 'expense'
             AND LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
+            AND ${ACCESS}
           GROUP BY COALESCE(merchant, counterparty, description)
           ORDER BY total DESC
           LIMIT 10
-        `),
+        `, [uid]),
       ])
 
     return NextResponse.json({

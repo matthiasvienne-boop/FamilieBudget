@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/api-auth'
 import { BulkUpdatePayload } from '@/types'
 
 export async function PATCH(request: NextRequest) {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
@@ -33,7 +33,9 @@ export async function PATCH(request: NextRequest) {
     const inPlaceholders = ids.map(id => add(id)).join(',')
 
     await db.query(
-      `UPDATE transactions SET ${fields}, "updatedAt" = ${add(now)} WHERE id IN (${inPlaceholders}) AND "isDeleted" = false`,
+      `UPDATE transactions SET ${fields}, "updatedAt" = ${add(now)}
+       WHERE id IN (${inPlaceholders}) AND "isDeleted" = false
+         AND ("accountId" IS NULL OR "accountId" IN (SELECT "accountId" FROM account_members WHERE "userId" = ${add(session.id)}))`,
       params
     )
 
@@ -45,7 +47,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
@@ -57,11 +59,13 @@ export async function DELETE(request: NextRequest) {
     if (ids.length > 1000) return NextResponse.json({ error: 'Maximaal 1000 transacties tegelijk' }, { status: 400 })
 
     const now = new Date().toISOString()
-    const params: unknown[] = [now]
+    const params: unknown[] = [now, session.id]
     const inPlaceholders = ids.map((id: string) => { params.push(id); return `$${params.length}` }).join(',')
 
     await db.query(
-      `UPDATE transactions SET "isDeleted" = true, "updatedAt" = $1 WHERE id IN (${inPlaceholders})`,
+      `UPDATE transactions SET "isDeleted" = true, "updatedAt" = $1
+       WHERE id IN (${inPlaceholders})
+         AND ("accountId" IS NULL OR "accountId" IN (SELECT "accountId" FROM account_members WHERE "userId" = $2))`,
       params
     )
 

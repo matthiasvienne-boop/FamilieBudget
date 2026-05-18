@@ -1,11 +1,14 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 
-const jwtSecret = process.env.JWT_SECRET
-if (!jwtSecret) throw new Error('JWT_SECRET environment variable is required')
-const SECRET = new TextEncoder().encode(jwtSecret)
 const COOKIE_NAME = 'fb_token'
 const EXPIRY = '7d'
+
+function getSecret(): Uint8Array {
+  const jwtSecret = process.env.JWT_SECRET
+  if (!jwtSecret) throw new Error('JWT_SECRET environment variable is required')
+  return new TextEncoder().encode(jwtSecret)
+}
 
 export interface JWTPayload {
   id: string
@@ -19,12 +22,12 @@ export async function signToken(payload: JWTPayload): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(EXPIRY)
-    .sign(SECRET)
+    .sign(getSecret())
 }
 
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, SECRET)
+    const { payload } = await jwtVerify(token, getSecret())
     return payload as unknown as JWTPayload
   } catch {
     return null

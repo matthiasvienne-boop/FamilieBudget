@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
 
-const jwtSecret = process.env.JWT_SECRET
-if (!jwtSecret) throw new Error('JWT_SECRET environment variable is required')
-const SECRET = new TextEncoder().encode(jwtSecret)
 const COOKIE_NAME = 'fb_token'
+
+function getSecret(): Uint8Array {
+  const jwtSecret = process.env.JWT_SECRET
+  if (!jwtSecret) throw new Error('JWT_SECRET environment variable is required')
+  return new TextEncoder().encode(jwtSecret)
+}
 
 const PUBLIC_PREFIXES = ['/auth/', '/api/auth/']
 const PUBLIC_EXACT = new Set(['/', '/favicon.ico'])
@@ -25,7 +28,7 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
-    await jwtVerify(token, SECRET)
+    await jwtVerify(token, getSecret())
     return NextResponse.next()
   } catch {
     const response = NextResponse.redirect(new URL('/auth/login', request.url))

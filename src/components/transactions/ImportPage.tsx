@@ -263,6 +263,8 @@ export default function ImportPage() {
         <AIImportModal
           onClose={() => setShowAIImport(false)}
           onDone={() => { setShowAIImport(false); window.location.href = '/transactions' }}
+          accounts={accounts}
+          selectedAccountId={selectedAccountId}
         />
       )}
     </div>

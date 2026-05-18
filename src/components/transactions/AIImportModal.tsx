@@ -34,12 +34,20 @@ interface ImportResult {
   total: number
 }
 
+interface AccountOption {
+  id: string
+  name: string
+  bank: string | null
+}
+
 interface Props {
   onClose: () => void
   onDone: () => void
+  accounts?: AccountOption[]
+  selectedAccountId?: string
 }
 
-export default function AIImportModal({ onClose, onDone }: Props) {
+export default function AIImportModal({ onClose, onDone, accounts = [], selectedAccountId: initialAccountId = '' }: Props) {
   const [step, setStep] = useState<'upload' | 'mapping' | 'done'>('upload')
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -50,6 +58,7 @@ export default function AIImportModal({ onClose, onDone }: Props) {
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importError, setImportError] = useState('')
+  const [accountId, setAccountId] = useState(initialAccountId)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = (f: File) => {
@@ -99,6 +108,7 @@ export default function AIImportModal({ onClose, onDone }: Props) {
       formData.append('file', file)
       formData.append('mapping', JSON.stringify(mapping))
       formData.append('delimiter', mapResult.delimiter)
+      if (accountId) formData.append('accountId', accountId)
 
       const res = await fetch('/api/import/generic', { method: 'POST', body: formData })
       const data = await res.json()
@@ -164,6 +174,22 @@ export default function AIImportModal({ onClose, onDone }: Props) {
                 </div>
               )}
             </div>
+
+            {accounts.length > 0 && (
+              <div>
+                <label className="text-sm font-medium text-slate-700 mb-1.5 block">Rekening (optioneel)</label>
+                <select
+                  value={accountId}
+                  onChange={e => setAccountId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white"
+                >
+                  <option value="">— Geen rekening koppelen —</option>
+                  {accounts.map(a => (
+                    <option key={a.id} value={a.id}>{a.name}{a.bank ? ` (${a.bank})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {analyzeError && (
               <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">

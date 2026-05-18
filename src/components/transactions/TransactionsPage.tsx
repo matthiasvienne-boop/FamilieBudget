@@ -34,6 +34,14 @@ type FiltersState = {
   direction: string
   uncategorized: boolean
   search: string
+  accountId: string
+}
+
+interface AccountOption {
+  id: string
+  name: string
+  bank: string | null
+  color: string | null
 }
 
 function TransactionsPageInner() {
@@ -53,11 +61,13 @@ function TransactionsPageInner() {
     direction: '',
     uncategorized: searchParams.get('uncategorized') === 'true',
     search: '',
+    accountId: '',
   })
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [lists, setLists] = useState<TransactionList[]>([])
   const [groups, setGroups] = useState<TransactionGroup[]>([])
+  const [accounts, setAccounts] = useState<AccountOption[]>([])
   const [showFilters, setShowFilters] = useState(false)
   const [classifyTx, setClassifyTx] = useState<Transaction | null>(null)
   const [classifyBulk, setClassifyBulk] = useState(false)
@@ -82,6 +92,7 @@ function TransactionsPageInner() {
     if (filters.direction) params.set('direction', filters.direction)
     if (filters.uncategorized) params.set('uncategorized', 'true')
     if (filters.search) params.set('search', filters.search)
+    if (filters.accountId) params.set('accountId', filters.accountId)
     params.set('page', String(page))
     params.set('pageSize', String(pageSize))
 
@@ -99,10 +110,10 @@ function TransactionsPageInner() {
   useEffect(() => {
     fetch('/api/lists')
       .then(r => r.json())
-      .then(d => {
-        setLists(d.lists || [])
-        setGroups(d.groups || [])
-      })
+      .then(d => { setLists(d.lists || []); setGroups(d.groups || []) })
+    fetch('/api/accounts')
+      .then(r => r.ok ? r.json() : [])
+      .then(setAccounts)
   }, [])
 
   const toggleSelect = (id: string) => {
@@ -179,7 +190,7 @@ function TransactionsPageInner() {
       {/* Filters panel */}
       {showFilters && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4 space-y-3">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {/* Month */}
             <div>
               <label className="text-xs text-slate-500 mb-1 block">Maand</label>
@@ -192,17 +203,21 @@ function TransactionsPageInner() {
                 {months.map(m => <option key={m} value={m}>{formatMonth(m)}</option>)}
               </select>
             </div>
-            {/* Source */}
+            {/* Account */}
             <div>
-              <label className="text-xs text-slate-500 mb-1 block">Bron</label>
+              <label className="text-xs text-slate-500 mb-1 block">Rekening</label>
               <select
-                value={filters.source}
-                onChange={e => { setFilters(f => ({ ...f, source: e.target.value })); setPage(1) }}
+                value={filters.accountId}
+                onChange={e => { setFilters(f => ({ ...f, accountId: e.target.value })); setPage(1) }}
                 className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
               >
-                <option value="">Alle</option>
-                <option value="revolut">Revolut</option>
-                <option value="crelan">Crelan</option>
+                <option value="">Alle rekeningen</option>
+                <option value="__none__">Zonder rekening</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}{a.bank ? ` (${a.bank})` : ''}
+                  </option>
+                ))}
               </select>
             </div>
             {/* Category */}
@@ -230,6 +245,20 @@ function TransactionsPageInner() {
                 <option value="income">Inkomsten</option>
                 <option value="expense">Uitgaven</option>
                 <option value="transfer">Transfers</option>
+              </select>
+            </div>
+            {/* Source */}
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Bron</label>
+              <select
+                value={filters.source}
+                onChange={e => { setFilters(f => ({ ...f, source: e.target.value })); setPage(1) }}
+                className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+              >
+                <option value="">Alle</option>
+                <option value="revolut">Revolut</option>
+                <option value="crelan">Crelan</option>
+                <option value="generic">Universeel</option>
               </select>
             </div>
           </div>

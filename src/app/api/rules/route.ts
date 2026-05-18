@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { getDb, transaction } from '@/lib/db'
 import { requireAuth } from '@/lib/api-auth'
 import { matchesRule } from '@/lib/classification'
 import { ClassificationRule, Transaction } from '@/types'
@@ -10,9 +10,9 @@ export async function GET() {
   if (error) return error
 
   try {
-    const db = getDb()
-    const rules = db.prepare('SELECT * FROM classification_rules ORDER BY priority DESC, createdAt DESC').all()
-    return NextResponse.json(rules)
+    const db = await getDb()
+    const result = await db.query('SELECT * FROM classification_rules ORDER BY priority DESC, "createdAt" DESC')
+    return NextResponse.json(result.rows)
   } catch (error) {
     console.error(error)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   if (error) return error
 
   try {
-    const db = getDb()
+    const db = await getDb()
     const body = await request.json()
     const {
       matchType, matchValue, listName, groupName,
@@ -39,43 +39,38 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString()
     const id = uuidv4()
 
-    db.prepare(`
+    await db.query(`
       INSERT INTO classification_rules
-        (id, matchType, matchValue, listName, groupName, isRecurring, recurringType,
-         recurringEndType, recurringEndDate, applyToFutureImports, priority, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+        (id, "matchType", "matchValue", "listName", "groupName", "isRecurring", "recurringType",
+         "recurringEndType", "recurringEndDate", "applyToFutureImports", priority, "createdAt", "updatedAt")
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    `, [
       id, matchType, matchValue.trim(),
       listName ?? null, groupName ?? null,
-      isRecurring ? 1 : 0,
-      recurringType ?? 'one_time',
-      recurringEndType ?? null,
-      recurringEndDate ?? null,
-      applyToFutureImports !== false ? 1 : 0,
-      priority ?? 0,
-      now, now
+      !!isRecurring, recurringType ?? 'one_time',
+      recurringEndType ?? null, recurringEndDate ?? null,
+      applyToFutureImports !== false, priority ?? 0,
+      now, now,
+    ])
+
+    const ruleRes = await db.query('SELECT * FROM classification_rules WHERE id = $1', [id])
+    const rule = ruleRes.rows[0] as ClassificationRule
+
+    const unclassifiedRes = await db.query(
+      `SELECT * FROM transactions WHERE "isDeleted" = false AND "listName" IS NULL`
     )
-
-    const rule = db.prepare('SELECT * FROM classification_rules WHERE id = ?').get(id) as ClassificationRule
-
-    // Apply rule to all existing unclassified transactions that match
-    const unclassified = db.prepare(
-      "SELECT * FROM transactions WHERE isDeleted = 0 AND listName IS NULL"
-    ).all() as Transaction[]
-
-    const toUpdate = unclassified.filter(tx => matchesRule(tx, rule))
+    const toUpdate = (unclassifiedRes.rows as Transaction[]).filter(tx => matchesRule(tx, rule))
 
     if (toUpdate.length > 0) {
       const now2 = new Date().toISOString()
-      const update = db.prepare(
-        'UPDATE transactions SET listName = ?, groupName = ?, isRecurring = ?, recurringType = ?, updatedAt = ? WHERE id = ?'
-      )
-      const updateAll = db.transaction((txs: Transaction[]) => {
-        for (const tx of txs) {
-          update.run(rule.listName ?? null, rule.groupName ?? null, rule.isRecurring ? 1 : 0, rule.recurringType, now2, tx.id)
+      await transaction(async (client) => {
+        for (const tx of toUpdate) {
+          await client.query(
+            `UPDATE transactions SET "listName" = $1, "groupName" = $2, "isRecurring" = $3, "recurringType" = $4, "updatedAt" = $5 WHERE id = $6`,
+            [rule.listName ?? null, rule.groupName ?? null, !!rule.isRecurring, rule.recurringType, now2, tx.id]
+          )
         }
       })
-      updateAll(toUpdate)
     }
 
     return NextResponse.json({ ...rule, appliedTo: toUpdate.length })
@@ -90,13 +85,13 @@ export async function DELETE(request: NextRequest) {
   if (error) return error
 
   try {
-    const db = getDb()
+    const db = await getDb()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-    db.prepare('DELETE FROM classification_rules WHERE id = ?').run(id)
+    await db.query('DELETE FROM classification_rules WHERE id = $1', [id])
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error(error)

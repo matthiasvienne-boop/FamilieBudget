@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { getDb, transaction } from '@/lib/db'
 import { requireAuth } from '@/lib/api-auth'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -8,10 +8,12 @@ export async function GET() {
   if (error) return error
 
   try {
-    const db = getDb()
-    const lists = db.prepare('SELECT * FROM transaction_lists ORDER BY sortOrder, name').all()
-    const groups = db.prepare('SELECT * FROM transaction_groups ORDER BY listName, sortOrder, name').all()
-    return NextResponse.json({ lists, groups })
+    const db = await getDb()
+    const [listsRes, groupsRes] = await Promise.all([
+      db.query(`SELECT * FROM transaction_lists ORDER BY "sortOrder", name`),
+      db.query(`SELECT * FROM transaction_groups ORDER BY "listName", "sortOrder", name`),
+    ])
+    return NextResponse.json({ lists: listsRes.rows, groups: groupsRes.rows })
   } catch (error) {
     console.error(error)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })
@@ -23,22 +25,23 @@ export async function POST(request: NextRequest) {
   if (error) return error
 
   try {
-    const db = getDb()
-    const body = await request.json()
-    const { name, color } = body
+    const db = await getDb()
+    const { name, color } = await request.json()
 
     if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
     const now = new Date().toISOString()
     const id = uuidv4()
-    const maxOrder = (db.prepare('SELECT MAX(sortOrder) as m FROM transaction_lists').get() as { m: number | null }).m ?? -1
+    const maxRes = await db.query('SELECT MAX("sortOrder") as m FROM transaction_lists')
+    const maxOrder = (maxRes.rows[0].m as number | null) ?? -1
 
-    db.prepare(
-      'INSERT INTO transaction_lists (id, name, color, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, name.trim(), color || null, maxOrder + 1, now, now)
+    await db.query(
+      `INSERT INTO transaction_lists (id, name, color, "sortOrder", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id, name.trim(), color || null, maxOrder + 1, now, now]
+    )
 
-    const list = db.prepare('SELECT * FROM transaction_lists WHERE id = ?').get(id)
-    return NextResponse.json(list)
+    const result = await db.query('SELECT * FROM transaction_lists WHERE id = $1', [id])
+    return NextResponse.json(result.rows[0])
   } catch (error) {
     console.error(error)
     return NextResponse.json({ error: 'Failed to create list' }, { status: 500 })
@@ -50,34 +53,38 @@ export async function PATCH(request: NextRequest) {
   if (error) return error
 
   try {
-    const db = getDb()
-    const body = await request.json()
-    const { id, name, color } = body
+    const db = await getDb()
+    const { id, name, color } = await request.json()
 
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
     const now = new Date().toISOString()
-    const updates: string[] = []
-    const values: unknown[] = []
+    const params: unknown[] = []
+    const add = (v: unknown) => { params.push(v); return `$${params.length}` }
+    const sets: string[] = []
 
-    if (name !== undefined) { updates.push('name = ?'); values.push(name.trim()) }
-    if (color !== undefined) { updates.push('color = ?'); values.push(color) }
+    if (name !== undefined) sets.push(`name = ${add(name.trim())}`)
+    if (color !== undefined) sets.push(`color = ${add(color)}`)
+    if (sets.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
-    if (updates.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+    sets.push(`"updatedAt" = ${add(now)}`)
 
-    db.prepare(`UPDATE transaction_lists SET ${updates.join(', ')}, updatedAt = ? WHERE id = ?`).run(...values, now, id)
-
-    // If name changed, update groups and transactions
     if (name !== undefined) {
-      const old = db.prepare('SELECT name FROM transaction_lists WHERE id = ?').get(id) as { name: string } | undefined
+      const oldRes = await db.query('SELECT name FROM transaction_lists WHERE id = $1', [id])
+      const old = oldRes.rows[0] as { name: string } | undefined
       if (old) {
-        db.prepare('UPDATE transaction_groups SET listName = ? WHERE listId = ?').run(name.trim(), id)
-        db.prepare('UPDATE transactions SET listName = ? WHERE listName = ?').run(name.trim(), old.name)
+        await transaction(async (client) => {
+          await client.query(`UPDATE transaction_lists SET ${sets.join(', ')} WHERE id = ${add(id)}`, params)
+          await client.query('UPDATE transaction_groups SET "listName" = $1 WHERE "listId" = $2', [name.trim(), id])
+          await client.query('UPDATE transactions SET "listName" = $1 WHERE "listName" = $2', [name.trim(), old.name])
+        })
       }
+    } else {
+      await db.query(`UPDATE transaction_lists SET ${sets.join(', ')} WHERE id = ${add(id)}`, params)
     }
 
-    const list = db.prepare('SELECT * FROM transaction_lists WHERE id = ?').get(id)
-    return NextResponse.json(list)
+    const result = await db.query('SELECT * FROM transaction_lists WHERE id = $1', [id])
+    return NextResponse.json(result.rows[0])
   } catch (error) {
     console.error(error)
     return NextResponse.json({ error: 'Failed to update list' }, { status: 500 })
@@ -89,18 +96,19 @@ export async function DELETE(request: NextRequest) {
   if (error) return error
 
   try {
-    const db = getDb()
+    const db = await getDb()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-    const list = db.prepare('SELECT name FROM transaction_lists WHERE id = ?').get(id) as { name: string } | undefined
-    if (list) {
-      db.prepare('UPDATE transactions SET listName = NULL, groupName = NULL WHERE listName = ?').run(list.name)
-    }
+    const listRes = await db.query('SELECT name FROM transaction_lists WHERE id = $1', [id])
+    const list = listRes.rows[0] as { name: string } | undefined
 
-    db.prepare('DELETE FROM transaction_lists WHERE id = ?').run(id)
+    if (list) {
+      await db.query('UPDATE transactions SET "listName" = NULL, "groupName" = NULL WHERE "listName" = $1', [list.name])
+    }
+    await db.query('DELETE FROM transaction_lists WHERE id = $1', [id])
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -9,21 +9,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const body = await req.json()
   const now = new Date().toISOString()
-  const db = getDb()
+  const db = await getDb()
 
-  const setClauses: string[] = []
-  const values: unknown[] = []
+  const pgParams: unknown[] = []
+  const add = (v: unknown) => { pgParams.push(v); return `$${pgParams.length}` }
+  const sets: string[] = []
 
-  if (body.status !== undefined)          { setClauses.push('status = ?');          values.push(body.status) }
-  if (body.unread_by_admin !== undefined) { setClauses.push('unread_by_admin = ?'); values.push(body.unread_by_admin ? 1 : 0) }
-  if (body.unread_by_user !== undefined)  { setClauses.push('unread_by_user = ?');  values.push(body.unread_by_user ? 1 : 0) }
-  if (body.admin_reply !== undefined)     { setClauses.push('admin_reply = ?');     values.push(body.admin_reply) }
+  if (body.status !== undefined)          sets.push(`status = ${add(body.status)}`)
+  if (body.unread_by_admin !== undefined) sets.push(`unread_by_admin = ${add(!!body.unread_by_admin)}`)
+  if (body.unread_by_user !== undefined)  sets.push(`unread_by_user = ${add(!!body.unread_by_user)}`)
+  if (body.admin_reply !== undefined)     sets.push(`admin_reply = ${add(body.admin_reply)}`)
 
-  if (setClauses.length === 0) return NextResponse.json({ ok: true })
+  if (sets.length === 0) return NextResponse.json({ ok: true })
 
-  setClauses.push('updated_at = ?')
-  values.push(now, id)
+  sets.push(`updated_at = ${add(now)}`)
 
-  db.prepare(`UPDATE feedback SET ${setClauses.join(', ')} WHERE id = ?`).run(...values)
+  await db.query(`UPDATE feedback SET ${sets.join(', ')} WHERE id = ${add(id)}`, pgParams)
   return NextResponse.json({ ok: true })
 }

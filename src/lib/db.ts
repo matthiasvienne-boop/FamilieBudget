@@ -1,150 +1,170 @@
-import Database from 'better-sqlite3'
-import path from 'path'
-import fs from 'fs'
+import { Pool, PoolClient } from 'pg'
 
-const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'budget.db')
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 10,
+})
 
-let db: Database.Database | null = null
+let initialized = false
 
-export function getDb(): Database.Database {
-  if (!db) {
-    const dir = path.dirname(DB_PATH)
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-    db = new Database(DB_PATH)
-    db.pragma('journal_mode = WAL')
-    db.pragma('foreign_keys = ON')
-    initSchema(db)
+export async function getDb(): Promise<Pool> {
+  if (!initialized) {
+    await initSchema()
+    initialized = true
   }
-  return db
+  return pool
 }
 
-function initSchema(db: Database.Database) {
-  db.exec(`
+export async function query(sql: string, params?: unknown[]) {
+  const db = await getDb()
+  return db.query(sql, params as unknown[])
+}
+
+export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const db = await getDb()
+  const client = await db.connect()
+  try {
+    await client.query('BEGIN')
+    const result = await fn(client)
+    await client.query('COMMIT')
+    return result
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
+}
+
+async function initSchema() {
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
       source TEXT NOT NULL,
-      sourceFileName TEXT NOT NULL DEFAULT '',
-      sourceTransactionId TEXT,
-      transactionDate TEXT NOT NULL,
-      completedDate TEXT,
+      "sourceFileName" TEXT NOT NULL DEFAULT '',
+      "sourceTransactionId" TEXT,
+      "transactionDate" TEXT NOT NULL,
+      "completedDate" TEXT,
       description TEXT NOT NULL DEFAULT '',
       counterparty TEXT,
       merchant TEXT,
-      amount REAL NOT NULL,
+      amount FLOAT8 NOT NULL,
       currency TEXT NOT NULL DEFAULT 'EUR',
-      fees REAL NOT NULL DEFAULT 0,
-      balanceAfterTransaction REAL,
-      transactionType TEXT,
-      productOrAccount TEXT,
+      fees FLOAT8 NOT NULL DEFAULT 0,
+      "balanceAfterTransaction" FLOAT8,
+      "transactionType" TEXT,
+      "productOrAccount" TEXT,
       status TEXT,
       direction TEXT NOT NULL DEFAULT 'expense',
-      listName TEXT,
-      groupName TEXT,
-      isRecurring INTEGER NOT NULL DEFAULT 0,
-      recurringType TEXT NOT NULL DEFAULT 'one_time',
-      recurringEndType TEXT,
-      recurringEndDate TEXT,
+      "listName" TEXT,
+      "groupName" TEXT,
+      "isRecurring" BOOLEAN NOT NULL DEFAULT FALSE,
+      "recurringType" TEXT NOT NULL DEFAULT 'one_time',
+      "recurringEndType" TEXT,
+      "recurringEndDate" TEXT,
       notes TEXT,
-      isSplit INTEGER NOT NULL DEFAULT 0,
-      isDeleted INTEGER NOT NULL DEFAULT 0,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL,
-      rawData TEXT
+      "isSplit" BOOLEAN NOT NULL DEFAULT FALSE,
+      "isDeleted" BOOLEAN NOT NULL DEFAULT FALSE,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      "rawData" TEXT
     );
 
-    CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transactionDate);
+    CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions("transactionDate");
     CREATE INDEX IF NOT EXISTS idx_transactions_source ON transactions(source);
     CREATE INDEX IF NOT EXISTS idx_transactions_direction ON transactions(direction);
-    CREATE INDEX IF NOT EXISTS idx_transactions_list ON transactions(listName);
-    CREATE INDEX IF NOT EXISTS idx_transactions_deleted ON transactions(isDeleted);
+    CREATE INDEX IF NOT EXISTS idx_transactions_list ON transactions("listName");
+    CREATE INDEX IF NOT EXISTS idx_transactions_deleted ON transactions("isDeleted");
 
     CREATE TABLE IF NOT EXISTS transaction_lists (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       color TEXT,
-      sortOrder INTEGER NOT NULL DEFAULT 0,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
+      "sortOrder" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS transaction_groups (
       id TEXT PRIMARY KEY,
-      listId TEXT NOT NULL,
-      listName TEXT NOT NULL,
+      "listId" TEXT NOT NULL,
+      "listName" TEXT NOT NULL,
       name TEXT NOT NULL,
-      sortOrder INTEGER NOT NULL DEFAULT 0,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL,
-      FOREIGN KEY (listId) REFERENCES transaction_lists(id) ON DELETE CASCADE,
-      UNIQUE(listName, name)
+      "sortOrder" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      FOREIGN KEY ("listId") REFERENCES transaction_lists(id) ON DELETE CASCADE,
+      UNIQUE("listName", name)
     );
 
     CREATE TABLE IF NOT EXISTS classification_rules (
       id TEXT PRIMARY KEY,
-      matchType TEXT NOT NULL,
-      matchValue TEXT NOT NULL,
-      listName TEXT,
-      groupName TEXT,
-      isRecurring INTEGER NOT NULL DEFAULT 0,
-      recurringType TEXT NOT NULL DEFAULT 'one_time',
-      recurringEndType TEXT,
-      recurringEndDate TEXT,
-      applyToFutureImports INTEGER NOT NULL DEFAULT 1,
+      "matchType" TEXT NOT NULL,
+      "matchValue" TEXT NOT NULL,
+      "listName" TEXT,
+      "groupName" TEXT,
+      "isRecurring" BOOLEAN NOT NULL DEFAULT FALSE,
+      "recurringType" TEXT NOT NULL DEFAULT 'one_time',
+      "recurringEndType" TEXT,
+      "recurringEndDate" TEXT,
+      "applyToFutureImports" BOOLEAN NOT NULL DEFAULT TRUE,
       priority INTEGER NOT NULL DEFAULT 0,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS import_history (
       id TEXT PRIMARY KEY,
-      fileName TEXT NOT NULL,
+      "fileName" TEXT NOT NULL,
       source TEXT NOT NULL,
-      importedAt TEXT NOT NULL,
-      transactionCount INTEGER NOT NULL DEFAULT 0,
-      duplicateCount INTEGER NOT NULL DEFAULT 0
+      "importedAt" TEXT NOT NULL,
+      "transactionCount" INTEGER NOT NULL DEFAULT 0,
+      "duplicateCount" INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS transaction_splits (
       id TEXT PRIMARY KEY,
-      transactionId TEXT NOT NULL,
-      listName TEXT,
-      groupName TEXT,
-      amount REAL NOT NULL,
+      "transactionId" TEXT NOT NULL,
+      "listName" TEXT,
+      "groupName" TEXT,
+      amount FLOAT8 NOT NULL,
       note TEXT,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL,
-      FOREIGN KEY (transactionId) REFERENCES transactions(id)
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      FOREIGN KEY ("transactionId") REFERENCES transactions(id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_splits_tx ON transaction_splits(transactionId);
+    CREATE INDEX IF NOT EXISTS idx_splits_tx ON transaction_splits("transactionId");
 
     CREATE TABLE IF NOT EXISTS budget_goals (
       id TEXT PRIMARY KEY,
-      listName TEXT NOT NULL,
-      groupName TEXT NOT NULL DEFAULT '',
+      "listName" TEXT NOT NULL,
+      "groupName" TEXT NOT NULL DEFAULT '',
       month TEXT NOT NULL DEFAULT '',
-      goalAmount REAL NOT NULL,
+      "goalAmount" FLOAT8 NOT NULL,
       direction TEXT NOT NULL DEFAULT 'expense',
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL,
-      UNIQUE(listName, groupName, month)
+      period TEXT NOT NULL DEFAULT 'month',
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      UNIQUE("listName", "groupName", month)
     );
 
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
-      passwordHash TEXT NOT NULL,
+      "passwordHash" TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'member',
-      isActive INTEGER NOT NULL DEFAULT 1,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
+      "isActive" BOOLEAN NOT NULL DEFAULT TRUE,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
+      "updatedAt" TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS feedback (
@@ -157,8 +177,8 @@ function initSchema(db: Database.Database) {
       created_by TEXT NOT NULL DEFAULT 'Gebruiker',
       page TEXT,
       admin_reply TEXT,
-      unread_by_admin INTEGER NOT NULL DEFAULT 1,
-      unread_by_user INTEGER NOT NULL DEFAULT 0,
+      unread_by_admin BOOLEAN NOT NULL DEFAULT TRUE,
+      unread_by_user BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -176,7 +196,7 @@ function initSchema(db: Database.Database) {
       id TEXT PRIMARY KEY,
       question TEXT NOT NULL,
       answer TEXT NOT NULL,
-      is_published INTEGER NOT NULL DEFAULT 1,
+      is_published BOOLEAN NOT NULL DEFAULT TRUE,
       source_feedback_id TEXT,
       order_index INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -184,16 +204,12 @@ function initSchema(db: Database.Database) {
     );
   `)
 
-  // Migrations: add columns that may not exist in older databases
-  try { db.exec("ALTER TABLE transactions ADD COLUMN isSplit INTEGER NOT NULL DEFAULT 0") } catch { /* already exists */ }
-  try { db.exec("ALTER TABLE budget_goals ADD COLUMN period TEXT NOT NULL DEFAULT 'month'") } catch { /* already exists */ }
-
-  seedDefaultLists(db)
+  await seedDefaultLists()
 }
 
-function seedDefaultLists(db: Database.Database) {
-  const count = (db.prepare('SELECT COUNT(*) as c FROM transaction_lists').get() as { c: number }).c
-  if (count > 0) return
+async function seedDefaultLists() {
+  const result = await pool.query('SELECT COUNT(*) as count FROM transaction_lists')
+  if (parseInt(result.rows[0].count) > 0) return
 
   const now = new Date().toISOString()
   const lists = [
@@ -210,7 +226,7 @@ function seedDefaultLists(db: Database.Database) {
     { id: 'list-overige', name: 'Overige', color: '#94a3b8', sortOrder: 10 },
   ]
 
-  const groups: Array<{ id: string; listId: string; listName: string; name: string; sortOrder: number }> = [
+  const groups = [
     { id: 'g-loon-matthias', listId: 'list-verloning', listName: 'Verloning', name: 'Loon Matthias', sortOrder: 0 },
     { id: 'g-loon-krystle', listId: 'list-verloning', listName: 'Verloning', name: 'Loon Krystle', sortOrder: 1 },
     { id: 'g-premie-matthias', listId: 'list-verloning', listName: 'Verloning', name: 'Eindejaarspremie Matthias', sortOrder: 2 },
@@ -233,13 +249,16 @@ function seedDefaultLists(db: Database.Database) {
     { id: 'g-streaming', listId: 'list-abonnementen', listName: 'Abonnementen', name: 'Streaming & media', sortOrder: 1 },
   ]
 
-  const insertList = db.prepare(
-    'INSERT OR IGNORE INTO transaction_lists (id, name, color, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)'
-  )
-  const insertGroup = db.prepare(
-    'INSERT OR IGNORE INTO transaction_groups (id, listId, listName, name, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  )
-
-  for (const l of lists) insertList.run(l.id, l.name, l.color, l.sortOrder, now, now)
-  for (const g of groups) insertGroup.run(g.id, g.listId, g.listName, g.name, g.sortOrder, now, now)
+  for (const l of lists) {
+    await pool.query(
+      `INSERT INTO transaction_lists (id, name, color, "sortOrder", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
+      [l.id, l.name, l.color, l.sortOrder, now, now]
+    )
+  }
+  for (const g of groups) {
+    await pool.query(
+      `INSERT INTO transaction_groups (id, "listId", "listName", name, "sortOrder", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+      [g.id, g.listId, g.listName, g.name, g.sortOrder, now, now]
+    )
+  }
 }

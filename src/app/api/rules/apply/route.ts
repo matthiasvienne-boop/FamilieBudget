@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { getDb, transaction } from '@/lib/db'
 import { requireAdmin } from '@/lib/api-auth'
 import { matchesRule } from '@/lib/classification'
 import { ClassificationRule, Transaction } from '@/types'
@@ -9,34 +9,33 @@ export async function POST() {
   if (error) return error
 
   try {
-    const db = getDb()
+    const db = await getDb()
 
-    const rules = db.prepare(
-      'SELECT * FROM classification_rules ORDER BY priority DESC, createdAt DESC'
-    ).all() as ClassificationRule[]
+    const [rulesRes, unclassifiedRes] = await Promise.all([
+      db.query('SELECT * FROM classification_rules ORDER BY priority DESC, "createdAt" DESC'),
+      db.query(`SELECT * FROM transactions WHERE "isDeleted" = false AND "listName" IS NULL`),
+    ])
 
-    const unclassified = db.prepare(
-      "SELECT * FROM transactions WHERE isDeleted = 0 AND listName IS NULL"
-    ).all() as Transaction[]
-
+    const rules = rulesRes.rows as ClassificationRule[]
+    const unclassified = unclassifiedRes.rows as Transaction[]
     const now = new Date().toISOString()
-    const update = db.prepare(
-      'UPDATE transactions SET listName = ?, groupName = ?, isRecurring = ?, recurringType = ?, updatedAt = ? WHERE id = ?'
-    )
 
     let applied = 0
-    const applyAll = db.transaction(() => {
+
+    await transaction(async (client) => {
       for (const tx of unclassified) {
         for (const rule of rules) {
           if (matchesRule(tx, rule)) {
-            update.run(rule.listName ?? null, rule.groupName ?? null, rule.isRecurring ? 1 : 0, rule.recurringType, now, tx.id)
+            await client.query(
+              `UPDATE transactions SET "listName" = $1, "groupName" = $2, "isRecurring" = $3, "recurringType" = $4, "updatedAt" = $5 WHERE id = $6`,
+              [rule.listName ?? null, rule.groupName ?? null, !!rule.isRecurring, rule.recurringType, now, tx.id]
+            )
             applied++
             break
           }
         }
       }
     })
-    applyAll()
 
     return NextResponse.json({ applied, total: unclassified.length })
   } catch (error) {

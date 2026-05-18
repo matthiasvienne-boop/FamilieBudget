@@ -10,21 +10,20 @@ export async function GET() {
     return NextResponse.json({ error: 'Geen toegang' }, { status: 403 })
   }
 
-  const db = getDb()
-  const users = db.prepare(
-    'SELECT id, email, name, role, isActive, createdAt FROM users ORDER BY createdAt ASC'
-  ).all()
-
-  return NextResponse.json(users)
+  const db = await getDb()
+  const result = await db.query(
+    `SELECT id, email, name, role, "isActive", "createdAt" FROM users ORDER BY "createdAt" ASC`
+  )
+  return NextResponse.json(result.rows)
 }
 
 export async function POST(request: NextRequest) {
   const session = await getSession()
+  const db = await getDb()
 
-  const db = getDb()
-  const userCount = (db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number }).c
+  const countRes = await db.query('SELECT COUNT(*) as count FROM users')
+  const userCount = parseInt(countRes.rows[0].count)
 
-  // Allow creating first user without auth, require admin for subsequent
   if (userCount > 0 && (!session || session.role !== 'admin')) {
     return NextResponse.json({ error: 'Geen toegang' }, { status: 403 })
   }
@@ -34,7 +33,6 @@ export async function POST(request: NextRequest) {
   if (!email || !name || !password) {
     return NextResponse.json({ error: 'Email, naam en wachtwoord zijn verplicht' }, { status: 400 })
   }
-
   if (password.length < 8) {
     return NextResponse.json({ error: 'Wachtwoord moet minstens 8 tekens zijn' }, { status: 400 })
   }
@@ -45,10 +43,10 @@ export async function POST(request: NextRequest) {
   const assignedRole = userCount === 0 ? 'admin' : (role || 'member')
 
   try {
-    db.prepare(
-      'INSERT INTO users (id, email, name, passwordHash, role, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, 1, ?, ?)'
-    ).run(id, email.toLowerCase().trim(), name.trim(), passwordHash, assignedRole, now, now)
-
+    await db.query(
+      `INSERT INTO users (id, email, name, "passwordHash", role, "isActive", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,true,$6,$7)`,
+      [id, email.toLowerCase().trim(), name.trim(), passwordHash, assignedRole, now, now]
+    )
     return NextResponse.json({ id, email, name, role: assignedRole })
   } catch {
     return NextResponse.json({ error: 'E-mailadres bestaat al' }, { status: 409 })
@@ -64,24 +62,21 @@ export async function PATCH(request: NextRequest) {
   const { id, name, password, role, isActive } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const db = getDb()
+  const db = await getDb()
   const now = new Date().toISOString()
-  const updates: Record<string, unknown> = { updatedAt: now }
+  const params: unknown[] = []
+  const add = (v: unknown) => { params.push(v); return `$${params.length}` }
+  const sets: string[] = []
 
-  if (name) updates.name = name.trim()
-  if (role) updates.role = role
-  if (typeof isActive === 'boolean') updates.isActive = isActive ? 1 : 0
+  if (name) sets.push(`name = ${add(name.trim())}`)
+  if (role) sets.push(`role = ${add(role)}`)
+  if (typeof isActive === 'boolean') sets.push(`"isActive" = ${add(isActive)}`)
   if (password) {
     if (password.length < 8) return NextResponse.json({ error: 'Wachtwoord te kort (min 8 tekens)' }, { status: 400 })
-    updates.passwordHash = await bcrypt.hash(password, 12)
+    sets.push(`"passwordHash" = ${add(await bcrypt.hash(password, 12))}`)
   }
+  sets.push(`"updatedAt" = ${add(now)}`)
 
-  // Only build SET clause from safe known fields (prevent SQL injection via key names)
-  const ALLOWED = ['name', 'role', 'isActive', 'passwordHash', 'updatedAt'] as const
-  const safeEntries = Object.entries(updates).filter(([k]) => ALLOWED.includes(k as typeof ALLOWED[number]))
-  const fields = safeEntries.map(([k]) => `${k} = ?`).join(', ')
-  const vals = safeEntries.map(([, v]) => v)
-  db.prepare(`UPDATE users SET ${fields} WHERE id = ?`).run(...vals, id)
-
+  await db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = ${add(id)}`, params)
   return NextResponse.json({ success: true })
 }

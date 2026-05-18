@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { getDb, transaction } from '@/lib/db'
 import { requireAuth } from '@/lib/api-auth'
 import { parseRevolutCSV } from '@/parsers/revolut'
 import { parseCrelanCSV } from '@/parsers/crelan'
@@ -7,14 +7,14 @@ import { applyRules, buildDuplicateKey } from '@/lib/classification'
 import { ClassificationRule, Transaction } from '@/types'
 import { v4 as uuidv4 } from 'uuid'
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024
 
 export async function POST(request: NextRequest) {
   const { error } = await requireAuth()
   if (error) return error
 
   try {
-    const db = getDb()
+    const db = await getDb()
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     const source = formData.get('source') as string | null
@@ -32,36 +32,20 @@ export async function POST(request: NextRequest) {
       ? parseRevolutCSV(csvText, fileName)
       : parseCrelanCSV(csvText, fileName)
 
-    const rules = db.prepare(
-      'SELECT * FROM classification_rules WHERE applyToFutureImports = 1 ORDER BY priority DESC'
-    ).all() as ClassificationRule[]
+    const [rulesRes, existingRes] = await Promise.all([
+      db.query('SELECT * FROM classification_rules WHERE "applyToFutureImports" = true ORDER BY priority DESC'),
+      db.query('SELECT source, "transactionDate", amount, description, counterparty FROM transactions WHERE "isDeleted" = false'),
+    ])
 
-    const existing = db.prepare(
-      'SELECT source, transactionDate, amount, description, counterparty FROM transactions WHERE isDeleted = 0'
-    ).all() as Partial<Transaction>[]
-
-    const existingKeys = new Set(existing.map(buildDuplicateKey))
+    const rules = rulesRes.rows as ClassificationRule[]
+    const existingKeys = new Set((existingRes.rows as Partial<Transaction>[]).map(buildDuplicateKey))
 
     let imported = 0
     let duplicates = 0
     const errors: string[] = []
 
-    const insertTx = db.prepare(`
-      INSERT INTO transactions (
-        id, source, sourceFileName, sourceTransactionId,
-        transactionDate, completedDate, description, counterparty, merchant,
-        amount, currency, fees, balanceAfterTransaction,
-        transactionType, productOrAccount, status, direction,
-        listName, groupName, isRecurring, recurringType,
-        recurringEndType, recurringEndDate, notes, isSplit, isDeleted,
-        createdAt, updatedAt, rawData
-      ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-      )
-    `)
-
-    const insertMany = db.transaction((transactions: Partial<Transaction>[]) => {
-      for (const tx of transactions) {
+    await transaction(async (client) => {
+      for (const tx of parsed) {
         try {
           const key = buildDuplicateKey(tx)
           if (existingKeys.has(key)) { duplicates++; continue }
@@ -69,7 +53,19 @@ export async function POST(request: NextRequest) {
           const classified = applyRules(tx, rules)
           existingKeys.add(key)
 
-          insertTx.run(
+          await client.query(`
+            INSERT INTO transactions (
+              id, source, "sourceFileName", "sourceTransactionId",
+              "transactionDate", "completedDate", description, counterparty, merchant,
+              amount, currency, fees, "balanceAfterTransaction",
+              "transactionType", "productOrAccount", status, direction,
+              "listName", "groupName", "isRecurring", "recurringType",
+              "recurringEndType", "recurringEndDate", notes, "isSplit", "isDeleted",
+              "createdAt", "updatedAt", "rawData"
+            ) VALUES (
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
+            )
+          `, [
             classified.id, classified.source, classified.sourceFileName,
             classified.sourceTransactionId ?? null, classified.transactionDate,
             classified.completedDate ?? null, classified.description,
@@ -78,11 +74,11 @@ export async function POST(request: NextRequest) {
             classified.balanceAfterTransaction ?? null, classified.transactionType ?? null,
             classified.productOrAccount ?? null, classified.status ?? null, classified.direction,
             classified.listName ?? null, classified.groupName ?? null,
-            classified.isRecurring ? 1 : 0, classified.recurringType ?? 'one_time',
+            !!classified.isRecurring, classified.recurringType ?? 'one_time',
             classified.recurringEndType ?? null, classified.recurringEndDate ?? null,
-            classified.notes ?? null, 0, 0,
-            classified.createdAt, classified.updatedAt, classified.rawData ?? null
-          )
+            classified.notes ?? null, false, false,
+            classified.createdAt, classified.updatedAt, classified.rawData ?? null,
+          ])
           imported++
         } catch (e) {
           errors.push('Rij kon niet worden verwerkt')
@@ -91,11 +87,10 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    insertMany(parsed)
-
-    db.prepare(
-      'INSERT INTO import_history (id, fileName, source, importedAt, transactionCount, duplicateCount) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(uuidv4(), fileName, source, new Date().toISOString(), imported, duplicates)
+    await db.query(
+      'INSERT INTO import_history (id, "fileName", source, "importedAt", "transactionCount", "duplicateCount") VALUES ($1,$2,$3,$4,$5,$6)',
+      [uuidv4(), fileName, source, new Date().toISOString(), imported, duplicates]
+    )
 
     return NextResponse.json({ imported, skipped: duplicates, duplicates, errors, total: parsed.length })
   } catch (error) {

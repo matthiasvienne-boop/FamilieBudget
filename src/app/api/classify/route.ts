@@ -8,18 +8,23 @@ export async function POST(request: NextRequest) {
   if (error) return error
 
   try {
-    const db = getDb()
+    const db = await getDb()
     const { description, counterparty, merchant, amount, direction } = await request.json()
 
-    const settingRow = db.prepare("SELECT value FROM app_settings WHERE key = 'anthropic_api_key'").get() as { value: string } | undefined
-    const apiKey = settingRow?.value || process.env.ANTHROPIC_API_KEY
+    const settingRes = await db.query(`SELECT value FROM app_settings WHERE key = 'anthropic_api_key'`)
+    const apiKey = settingRes.rows[0]?.value || process.env.ANTHROPIC_API_KEY
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Geen Anthropic API-sleutel ingesteld' }, { status: 400 })
     }
 
-    const lists = db.prepare('SELECT name FROM transaction_lists ORDER BY name').all() as { name: string }[]
-    const groups = db.prepare('SELECT listName, name FROM transaction_groups ORDER BY listName, name').all() as { listName: string; name: string }[]
+    const [listsRes, groupsRes] = await Promise.all([
+      db.query('SELECT name FROM transaction_lists ORDER BY name'),
+      db.query('SELECT "listName", name FROM transaction_groups ORDER BY "listName", name'),
+    ])
+
+    const lists = listsRes.rows as { name: string }[]
+    const groups = groupsRes.rows as { listName: string; name: string }[]
 
     const listOptions = lists.map(l => {
       const listGroups = groups.filter(g => g.listName === l.name).map(g => g.name)
@@ -30,7 +35,6 @@ export async function POST(request: NextRequest) {
     const amountStr = amount != null ? `€${Math.abs(amount).toFixed(2)} ${direction === 'income' ? '(inkomst)' : '(uitgave)'}` : ''
 
     const client = new Anthropic({ apiKey })
-
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 100,
@@ -49,13 +53,10 @@ JSON antwoord:`,
 
     const text = message.content[0].type === 'text' ? message.content[0].text : ''
     const jsonMatch = text.match(/\{[^}]+\}/)
-    if (!jsonMatch) {
-      return NextResponse.json({ error: 'Kon geen suggestie genereren' }, { status: 500 })
-    }
+    if (!jsonMatch) return NextResponse.json({ error: 'Kon geen suggestie genereren' }, { status: 500 })
 
     try {
-      const suggestion = JSON.parse(jsonMatch[0])
-      return NextResponse.json(suggestion)
+      return NextResponse.json(JSON.parse(jsonMatch[0]))
     } catch {
       return NextResponse.json({ error: 'Ongeldige AI-respons' }, { status: 500 })
     }

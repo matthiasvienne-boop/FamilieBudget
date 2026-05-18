@@ -3,7 +3,6 @@ import { getDb } from '@/lib/db'
 import { signToken, COOKIE_NAME } from '@/lib/auth'
 import bcrypt from 'bcryptjs'
 
-// Simple in-memory rate limiter: max 10 attempts per IP per 15 minutes
 const attempts = new Map<string, { count: number; resetAt: number }>()
 
 function checkRateLimit(ip: string): boolean {
@@ -26,15 +25,16 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, password } = await request.json()
-
     if (!email || !password) {
       return NextResponse.json({ error: 'Email en wachtwoord zijn verplicht' }, { status: 400 })
     }
 
-    const db = getDb()
-    const user = db.prepare(
-      'SELECT * FROM users WHERE email = ? AND isActive = 1'
-    ).get(email.toLowerCase().trim()) as { id: string; email: string; name: string; passwordHash: string; role: string } | undefined
+    const db = await getDb()
+    const result = await db.query(
+      `SELECT * FROM users WHERE email = $1 AND "isActive" = true`,
+      [email.toLowerCase().trim()]
+    )
+    const user = result.rows[0] as { id: string; email: string; name: string; passwordHash: string; role: string } | undefined
 
     if (!user || !await bcrypt.compare(password, user.passwordHash)) {
       return NextResponse.json({ error: 'Ongeldig e-mailadres of wachtwoord' }, { status: 401 })

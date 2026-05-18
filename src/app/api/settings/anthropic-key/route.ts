@@ -6,8 +6,9 @@ export async function GET() {
   const { error } = await requireAuth()
   if (error) return error
 
-  const db = getDb()
-  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'anthropic_api_key'").get() as { value: string } | undefined
+  const db = await getDb()
+  const result = await db.query(`SELECT value FROM app_settings WHERE key = 'anthropic_api_key'`)
+  const row = result.rows[0] as { value: string } | undefined
 
   if (!row) return NextResponse.json({ masked: '' })
 
@@ -25,12 +26,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Ongeldige Anthropic API-sleutel' }, { status: 400 })
   }
 
-  const db = getDb()
+  const db = await getDb()
   const now = new Date().toISOString()
-  db.prepare(`
-    INSERT INTO app_settings (key, value, updatedAt) VALUES ('anthropic_api_key', ?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt
-  `).run(key.trim(), now)
+  await db.query(`
+    INSERT INTO app_settings (key, value, "updatedAt") VALUES ('anthropic_api_key', $1, $2)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, "updatedAt" = EXCLUDED."updatedAt"
+  `, [key.trim(), now])
 
   return NextResponse.json({ success: true })
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { getDb, transaction } from '@/lib/db'
 import { requireAuth } from '@/lib/api-auth'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -18,9 +18,12 @@ export async function GET(request: NextRequest) {
   const transactionId = searchParams.get('transactionId')
   if (!transactionId) return NextResponse.json({ error: 'Missing transactionId' }, { status: 400 })
 
-  const db = getDb()
-  const splits = db.prepare('SELECT * FROM transaction_splits WHERE transactionId = ? ORDER BY rowid').all(transactionId)
-  return NextResponse.json(splits)
+  const db = await getDb()
+  const result = await db.query(
+    `SELECT * FROM transaction_splits WHERE "transactionId" = $1 ORDER BY "createdAt"`,
+    [transactionId]
+  )
+  return NextResponse.json(result.rows)
 }
 
 export async function POST(request: NextRequest) {
@@ -28,7 +31,7 @@ export async function POST(request: NextRequest) {
   if (error) return error
 
   try {
-    const db = getDb()
+    const db = await getDb()
     const { transactionId, splits }: { transactionId: string; splits: SplitInput[] } = await request.json()
 
     if (!transactionId || !splits?.length) {
@@ -37,21 +40,19 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString()
 
-    db.transaction(() => {
-      // Remove existing splits
-      db.prepare('DELETE FROM transaction_splits WHERE transactionId = ?').run(transactionId)
-
-      // Insert new splits
-      const insert = db.prepare(
-        'INSERT INTO transaction_splits (id, transactionId, listName, groupName, amount, note, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      )
+    await transaction(async (client) => {
+      await client.query('DELETE FROM transaction_splits WHERE "transactionId" = $1', [transactionId])
       for (const s of splits) {
-        insert.run(uuidv4(), transactionId, s.listName ?? null, s.groupName ?? null, s.amount, s.note ?? null, now, now)
+        await client.query(
+          `INSERT INTO transaction_splits (id, "transactionId", "listName", "groupName", amount, note, "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [uuidv4(), transactionId, s.listName ?? null, s.groupName ?? null, s.amount, s.note ?? null, now, now]
+        )
       }
-
-      // Mark transaction as split, clear listName/groupName
-      db.prepare('UPDATE transactions SET isSplit = 1, listName = NULL, groupName = NULL, updatedAt = ? WHERE id = ?').run(now, transactionId)
-    })()
+      await client.query(
+        `UPDATE transactions SET "isSplit" = true, "listName" = NULL, "groupName" = NULL, "updatedAt" = $1 WHERE id = $2`,
+        [now, transactionId]
+      )
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -65,16 +66,16 @@ export async function DELETE(request: NextRequest) {
   if (error) return error
 
   try {
-    const db = getDb()
+    const db = await getDb()
     const { searchParams } = new URL(request.url)
     const transactionId = searchParams.get('transactionId')
     if (!transactionId) return NextResponse.json({ error: 'Missing transactionId' }, { status: 400 })
 
     const now = new Date().toISOString()
-    db.transaction(() => {
-      db.prepare('DELETE FROM transaction_splits WHERE transactionId = ?').run(transactionId)
-      db.prepare('UPDATE transactions SET isSplit = 0, updatedAt = ? WHERE id = ?').run(now, transactionId)
-    })()
+    await transaction(async (client) => {
+      await client.query('DELETE FROM transaction_splits WHERE "transactionId" = $1', [transactionId])
+      await client.query(`UPDATE transactions SET "isSplit" = false, "updatedAt" = $1 WHERE id = $2`, [now, transactionId])
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   if (error) return error
 
   try {
-    const db = getDb()
+    const db = await getDb()
     const formData = await request.formData()
     const file = formData.get('file') as File | null
 
@@ -18,26 +18,19 @@ export async function POST(request: NextRequest) {
     if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'Bestand te groot (max 5MB)' }, { status: 413 })
 
     const csvText = await file.text()
-
-    // Parse headers and first few rows
     const lines = csvText.split('\n').filter(l => l.trim())
     if (lines.length < 2) return NextResponse.json({ error: 'CSV heeft te weinig rijen' }, { status: 400 })
 
-    // Detect delimiter (comma, semicolon, tab)
     const firstLine = lines[0]
     const delimiter = firstLine.includes(';') ? ';' : firstLine.includes('\t') ? '\t' : ','
-
-    const parseRow = (line: string) =>
-      line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''))
-
+    const parseRow = (line: string) => line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''))
     const headers = parseRow(lines[0])
     const sampleRows = lines.slice(1, 4).map(parseRow)
 
-    const settingRow = db.prepare("SELECT value FROM app_settings WHERE key = 'anthropic_api_key'").get() as { value: string } | undefined
-    const apiKey = settingRow?.value || process.env.ANTHROPIC_API_KEY
+    const settingRes = await db.query(`SELECT value FROM app_settings WHERE key = 'anthropic_api_key'`)
+    const apiKey = settingRes.rows[0]?.value || process.env.ANTHROPIC_API_KEY
 
     if (!apiKey) {
-      // Return headers without AI mapping if no key
       return NextResponse.json({ headers, sampleRows, delimiter, aiMapping: {}, aiError: 'Geen Anthropic API-sleutel' })
     }
 

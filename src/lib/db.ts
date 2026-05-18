@@ -203,6 +203,31 @@ async function initSchema() {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      iban TEXT,
+      bank TEXT,
+      type TEXT NOT NULL DEFAULT 'shared',
+      color TEXT NOT NULL DEFAULT '#3b82f6',
+      currency TEXT NOT NULL DEFAULT 'EUR',
+      "isActive" BOOLEAN NOT NULL DEFAULT TRUE,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS account_members (
+      "accountId" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "isOwner" BOOLEAN NOT NULL DEFAULT FALSE,
+      PRIMARY KEY ("accountId", "userId"),
+      FOREIGN KEY ("accountId") REFERENCES accounts(id) ON DELETE CASCADE,
+      FOREIGN KEY ("userId") REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "accountId" TEXT REFERENCES accounts(id);
+    CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions("accountId");
+
     CREATE TABLE IF NOT EXISTS invites (
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL,

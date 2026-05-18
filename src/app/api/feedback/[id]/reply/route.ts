@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const body = await req.json()
   const now = new Date().toISOString()
-  const author = body.author ?? 'user'
+  const author = auth.session.role === 'admin' ? 'admin' : 'user'
   const db = await getDb()
 
   await db.query(

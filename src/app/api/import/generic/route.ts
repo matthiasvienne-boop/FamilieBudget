@@ -49,9 +49,11 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File | null
     const mappingRaw = formData.get('mapping') as string | null
     const delimiterRaw = formData.get('delimiter') as string | null
+    const accountId = (formData.get('accountId') as string | null) || null
 
     if (!file) return NextResponse.json({ error: 'Geen bestand' }, { status: 400 })
     if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'Bestand te groot (max 10MB)' }, { status: 413 })
+    if (!file.name.toLowerCase().endsWith('.csv')) return NextResponse.json({ error: 'Alleen CSV-bestanden zijn toegestaan' }, { status: 400 })
     if (!mappingRaw) return NextResponse.json({ error: 'Geen veldmapping opgegeven' }, { status: 400 })
 
     const mapping: FieldMapping = JSON.parse(mappingRaw)
@@ -151,8 +153,8 @@ export async function POST(request: NextRequest) {
               "transactionType", "productOrAccount", status, direction,
               "listName", "groupName", "isRecurring", "recurringType",
               "recurringEndType", "recurringEndDate", notes, "isSplit", "isDeleted",
-              "createdAt", "updatedAt", "rawData"
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+              "createdAt", "updatedAt", "rawData", "accountId"
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
           `, [
             classified.id, classified.source, classified.sourceFileName,
             classified.sourceTransactionId ?? null, classified.transactionDate,
@@ -165,7 +167,7 @@ export async function POST(request: NextRequest) {
             !!classified.isRecurring, classified.recurringType ?? 'one_time',
             classified.recurringEndType ?? null, classified.recurringEndDate ?? null,
             classified.notes ?? null, false, false,
-            classified.createdAt, classified.updatedAt, classified.rawData ?? null,
+            classified.createdAt, classified.updatedAt, classified.rawData ?? null, accountId,
           ])
           imported++
         } catch (e) {

@@ -63,6 +63,21 @@ export async function PATCH(request: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const db = await getDb()
+
+  // Prevent deactivating yourself
+  if (id === session?.id && isActive === false) {
+    return NextResponse.json({ error: 'Je kan jezelf niet deactiveren' }, { status: 400 })
+  }
+  // Ensure at least one admin remains
+  if ((role === 'member' || isActive === false)) {
+    const target = await db.query('SELECT role FROM users WHERE id = $1', [id])
+    if (target.rows[0]?.role === 'admin') {
+      const adminCount = await db.query(`SELECT COUNT(*) as count FROM users WHERE role = 'admin' AND "isActive" = true`)
+      if (parseInt(adminCount.rows[0].count) <= 1) {
+        return NextResponse.json({ error: 'Er moet minstens één actieve beheerder blijven' }, { status: 400 })
+      }
+    }
+  }
   const now = new Date().toISOString()
   const params: unknown[] = []
   const add = (v: unknown) => { params.push(v); return `$${params.length}` }

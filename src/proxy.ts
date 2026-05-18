@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
 
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'familieBudget_jwt_secret_change_in_production_2026'
-)
+const jwtSecret = process.env.JWT_SECRET
+if (!jwtSecret) throw new Error('JWT_SECRET environment variable is required')
+const SECRET = new TextEncoder().encode(jwtSecret)
 const COOKIE_NAME = 'fb_token'
 
 const PUBLIC_PREFIXES = ['/auth/', '/api/auth/']

@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { TransactionList, TransactionGroup, ClassificationRule } from '@/types'
-import { Plus, Trash2, Edit2, Check, X, ChevronRight, Tag, Zap, Users, Sparkles, LogOut, Link, Copy } from 'lucide-react'
+import { TransactionList, TransactionGroup, ClassificationRule, Account, AccountType } from '@/types'
+import { Plus, Trash2, Edit2, Check, X, ChevronRight, Tag, Zap, Users, Sparkles, LogOut, Link, Copy, Landmark } from 'lucide-react'
 import clsx from 'clsx'
 
 const COLORS = [
@@ -10,7 +10,7 @@ const COLORS = [
   '#06b6d4', '#f97316', '#84cc16', '#14b8a6', '#6366f1', '#94a3b8', '#ef4444',
 ]
 
-type Tab = 'lists' | 'rules' | 'users' | 'ai'
+type Tab = 'lists' | 'rules' | 'accounts' | 'users' | 'ai'
 
 interface User {
   id: string
@@ -59,6 +59,13 @@ export default function SettingsPage() {
   const [inviteLink, setInviteLink] = useState('')
   const [inviteCopied, setInviteCopied] = useState(false)
 
+  // Accounts tab
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [showAccountForm, setShowAccountForm] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+  const [accountForm, setAccountForm] = useState({ name: '', iban: '', bank: '', type: 'shared' as AccountType, color: '#3b82f6', currency: 'EUR', memberIds: [] as string[] })
+  const [accountSaving, setAccountSaving] = useState(false)
+
   // AI tab
   const [apiKey, setApiKey] = useState('')
   const [apiKeySaved, setApiKeySaved] = useState(false)
@@ -80,6 +87,11 @@ export default function SettingsPage() {
   const reloadUsers = async () => {
     const res = await fetch('/api/auth/users')
     if (res.ok) setUsers(await res.json())
+  }
+
+  const reloadAccounts = async () => {
+    const res = await fetch('/api/accounts')
+    if (res.ok) setAccounts(await res.json())
   }
 
   const reloadApiKey = async () => {
@@ -184,6 +196,7 @@ export default function SettingsPage() {
         {[
           { id: 'lists', label: 'Lijsten & Groepen', icon: Tag },
           { id: 'rules', label: 'Regels', icon: Zap },
+          { id: 'accounts', label: 'Rekeningen', icon: Landmark },
           { id: 'users', label: 'Gebruikers', icon: Users },
           { id: 'ai', label: 'AI', icon: Sparkles },
         ].map(({ id, label, icon: Icon }) => (
@@ -192,6 +205,7 @@ export default function SettingsPage() {
             onClick={() => {
               setTab(id as Tab)
               if (id === 'users') reloadUsers()
+              if (id === 'accounts') { reloadUsers(); reloadAccounts() }
               if (id === 'ai') reloadApiKey()
             }}
             className={clsx(
@@ -500,6 +514,128 @@ export default function SettingsPage() {
           )}
         </div>
       )}
+      {/* ACCOUNTS TAB */}
+      {tab === 'accounts' && (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-500">Beheer je bankrekeningen en wie er toegang toe heeft.</p>
+
+          {accounts.map(account => (
+            <div key={account.id} className="bg-white rounded-xl border border-slate-100 p-4">
+              {editingAccount?.id === account.id ? (
+                <AccountForm
+                  form={accountForm}
+                  setForm={setAccountForm}
+                  users={users}
+                  currentUserId={currentUser?.id || ''}
+                  saving={accountSaving}
+                  onSave={async () => {
+                    setAccountSaving(true)
+                    await fetch('/api/accounts', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ id: account.id, ...accountForm }),
+                    })
+                    setEditingAccount(null)
+                    setAccountSaving(false)
+                    reloadAccounts()
+                  }}
+                  onCancel={() => setEditingAccount(null)}
+                />
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: account.color + '22' }}>
+                      <Landmark size={16} style={{ color: account.color || '#3b82f6' }} />
+                    </div>
+                    <div>
+                      <div className="font-medium text-slate-800 text-sm">{account.name}</div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {account.bank && <span>{account.bank} · </span>}
+                        {account.iban && <span className="font-mono">{account.iban} · </span>}
+                        <span>{account.type === 'personal' ? 'Persoonlijk' : account.type === 'shared' ? 'Gedeeld' : 'Kind'}</span>
+                        {account.currency !== 'EUR' && <span> · {account.currency}</span>}
+                      </div>
+                      {account.members && account.members.length > 0 && (
+                        <div className="text-xs text-slate-400 mt-0.5">
+                          {account.members.map(m => m.userName || m.userEmail || m.userId).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => {
+                        setAccountForm({
+                          name: account.name,
+                          iban: account.iban || '',
+                          bank: account.bank || '',
+                          type: account.type,
+                          color: account.color || '#3b82f6',
+                          currency: account.currency,
+                          memberIds: account.members?.map(m => m.userId) || [],
+                        })
+                        setEditingAccount(account)
+                        setShowAccountForm(false)
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Rekening "${account.name}" verwijderen?`)) return
+                        await fetch(`/api/accounts?id=${account.id}`, { method: 'DELETE' })
+                        reloadAccounts()
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {showAccountForm ? (
+            <div className="bg-white rounded-xl border border-blue-200 p-4">
+              <h3 className="font-medium text-slate-800 text-sm mb-3">Nieuwe rekening</h3>
+              <AccountForm
+                form={accountForm}
+                setForm={setAccountForm}
+                users={users}
+                currentUserId={currentUser?.id || ''}
+                saving={accountSaving}
+                onSave={async () => {
+                  setAccountSaving(true)
+                  await fetch('/api/accounts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(accountForm),
+                  })
+                  setAccountForm({ name: '', iban: '', bank: '', type: 'shared', color: '#3b82f6', currency: 'EUR', memberIds: [] })
+                  setShowAccountForm(false)
+                  setAccountSaving(false)
+                  reloadAccounts()
+                }}
+                onCancel={() => setShowAccountForm(false)}
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                setAccountForm({ name: '', iban: '', bank: '', type: 'shared', color: '#3b82f6', currency: 'EUR', memberIds: [] })
+                setEditingAccount(null)
+                setShowAccountForm(true)
+              }}
+              className="flex items-center gap-2 w-full px-4 py-3 bg-white border border-dashed border-slate-200 rounded-xl text-sm text-slate-500 hover:border-blue-300 hover:text-blue-600 transition-colors"
+            >
+              <Plus size={16} /> Nieuwe rekening toevoegen
+            </button>
+          )}
+        </div>
+      )}
+
       {/* USERS TAB */}
       {tab === 'users' && (
         <div className="space-y-4">
@@ -676,6 +812,137 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+const ACCOUNT_COLORS = [
+  '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899',
+  '#06b6d4', '#f97316', '#ef4444', '#14b8a6', '#6366f1',
+]
+
+interface AccountFormProps {
+  form: { name: string; iban: string; bank: string; type: AccountType; color: string; currency: string; memberIds: string[] }
+  setForm: React.Dispatch<React.SetStateAction<AccountFormProps['form']>>
+  users: Array<{ id: string; name: string; email: string }>
+  currentUserId: string
+  saving: boolean
+  onSave: () => void
+  onCancel: () => void
+}
+
+function AccountForm({ form, setForm, users, currentUserId, saving, onSave, onCancel }: AccountFormProps) {
+  const otherUsers = users.filter(u => u.id !== currentUserId)
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-slate-500 mb-1 block">Naam *</label>
+          <input
+            value={form.name}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="bv. Gezamenlijke rekening"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-slate-500 mb-1 block">Type</label>
+          <select
+            value={form.type}
+            onChange={e => setForm(f => ({ ...f, type: e.target.value as AccountType }))}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+          >
+            <option value="shared">Gedeeld</option>
+            <option value="personal">Persoonlijk</option>
+            <option value="child">Kind</option>
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-slate-500 mb-1 block">Rekeningnummer (IBAN)</label>
+          <input
+            value={form.iban}
+            onChange={e => setForm(f => ({ ...f, iban: e.target.value }))}
+            placeholder="BE68 5390 0754 7034"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-slate-500 mb-1 block">Bank</label>
+          <input
+            value={form.bank}
+            onChange={e => setForm(f => ({ ...f, bank: e.target.value }))}
+            placeholder="bv. Crelan"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-slate-500 mb-1 block">Kleur</label>
+          <div className="flex flex-wrap gap-1.5">
+            {ACCOUNT_COLORS.map(c => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setForm(f => ({ ...f, color: c }))}
+                className="w-6 h-6 rounded-full border-2 transition-transform hover:scale-110"
+                style={{ backgroundColor: c, borderColor: form.color === c ? '#1e293b' : 'transparent' }}
+              />
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-slate-500 mb-1 block">Valuta</label>
+          <select
+            value={form.currency}
+            onChange={e => setForm(f => ({ ...f, currency: e.target.value }))}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+          >
+            <option value="EUR">EUR</option>
+            <option value="USD">USD</option>
+            <option value="GBP">GBP</option>
+          </select>
+        </div>
+      </div>
+      {otherUsers.length > 0 && (
+        <div>
+          <label className="text-xs text-slate-500 mb-1.5 block">Mede-houders</label>
+          <div className="space-y-1">
+            {otherUsers.map(u => (
+              <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.memberIds.includes(u.id)}
+                  onChange={e => setForm(f => ({
+                    ...f,
+                    memberIds: e.target.checked
+                      ? [...f.memberIds, u.id]
+                      : f.memberIds.filter(id => id !== u.id),
+                  }))}
+                  className="rounded border-slate-300"
+                />
+                <span>{u.name}</span>
+                <span className="text-slate-400 text-xs">{u.email}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={onSave}
+          disabled={!form.name.trim() || saving}
+          className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+        >
+          {saving ? 'Opslaan...' : 'Opslaan'}
+        </button>
+        <button onClick={onCancel} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50">
+          Annuleren
+        </button>
+      </div>
     </div>
   )
 }

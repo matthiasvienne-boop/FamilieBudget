@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Upload, FileText, CheckCircle2, AlertCircle, Info, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import AIImportModal from './AIImportModal'
@@ -16,6 +16,13 @@ interface ImportResult {
   total: number
 }
 
+interface AccountOption {
+  id: string
+  name: string
+  bank: string | null
+  color: string | null
+}
+
 export default function ImportPage() {
   const [tab, setTab] = useState<Tab>('bank')
   const [source, setSource] = useState<Source>('revolut')
@@ -25,7 +32,13 @@ export default function ImportPage() {
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showAIImport, setShowAIImport] = useState(false)
+  const [accounts, setAccounts] = useState<AccountOption[]>([])
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/accounts').then(r => r.ok ? r.json() : []).then(setAccounts)
+  }, [])
 
   const handleFile = (f: File) => { setFile(f); setResult(null); setError(null) }
 
@@ -42,6 +55,7 @@ export default function ImportPage() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('source', source)
+      if (selectedAccountId) formData.append('accountId', selectedAccountId)
 
       const res = await fetch('/api/import', { method: 'POST', body: formData })
       const data = await res.json()
@@ -144,6 +158,22 @@ export default function ImportPage() {
               </div>
             )}
           </div>
+
+          {accounts.length > 0 && (
+            <div className="mb-4">
+              <label className="text-sm font-medium text-slate-700 mb-1.5 block">Rekening (optioneel)</label>
+              <select
+                value={selectedAccountId}
+                onChange={e => setSelectedAccountId(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white"
+              >
+                <option value="">— Geen rekening koppelen —</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.name}{a.bank ? ` (${a.bank})` : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <button
             disabled={!file || loading}

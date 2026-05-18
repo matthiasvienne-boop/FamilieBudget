@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const isRecurring = searchParams.get('isRecurring')
     const uncategorized = searchParams.get('uncategorized')
     const search = searchParams.get('search')
+    const accountId = searchParams.get('accountId')
     const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1)
     const pageSize = Math.min(500, Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50))
 
@@ -51,6 +52,11 @@ export async function GET(request: NextRequest) {
     if (search) {
       const s = `%${search}%`
       where += ` AND (description ILIKE ${add(s)} OR counterparty ILIKE ${add(s)} OR merchant ILIKE ${add(s)})`
+    }
+    if (accountId === '__none__') {
+      where += ` AND "accountId" IS NULL`
+    } else if (accountId) {
+      where += ` AND "accountId" = ${add(accountId)}`
     }
 
     void p // suppress unused warning

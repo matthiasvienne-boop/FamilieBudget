@@ -18,9 +18,11 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     const source = formData.get('source') as string | null
+    const accountId = (formData.get('accountId') as string | null) || null
 
     if (!file) return NextResponse.json({ error: 'Geen bestand opgegeven' }, { status: 400 })
     if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'Bestand te groot (max 10MB)' }, { status: 413 })
+    if (!file.name.toLowerCase().endsWith('.csv')) return NextResponse.json({ error: 'Alleen CSV-bestanden zijn toegestaan' }, { status: 400 })
     if (!source || !['revolut', 'crelan'].includes(source)) {
       return NextResponse.json({ error: 'Ongeldige bankbron' }, { status: 400 })
     }
@@ -61,9 +63,9 @@ export async function POST(request: NextRequest) {
               "transactionType", "productOrAccount", status, direction,
               "listName", "groupName", "isRecurring", "recurringType",
               "recurringEndType", "recurringEndDate", notes, "isSplit", "isDeleted",
-              "createdAt", "updatedAt", "rawData"
+              "createdAt", "updatedAt", "rawData", "accountId"
             ) VALUES (
-              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30
             )
           `, [
             classified.id, classified.source, classified.sourceFileName,
@@ -77,7 +79,7 @@ export async function POST(request: NextRequest) {
             !!classified.isRecurring, classified.recurringType ?? 'one_time',
             classified.recurringEndType ?? null, classified.recurringEndDate ?? null,
             classified.notes ?? null, false, false,
-            classified.createdAt, classified.updatedAt, classified.rawData ?? null,
+            classified.createdAt, classified.updatedAt, classified.rawData ?? null, accountId,
           ])
           imported++
         } catch (e) {

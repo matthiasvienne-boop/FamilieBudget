@@ -1,3 +1,27 @@
+export type AccountType = 'personal' | 'shared' | 'child'
+
+export interface Account {
+  id: string
+  name: string
+  iban: string | null
+  bank: string | null
+  type: AccountType
+  color: string | null
+  currency: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  members?: AccountMember[]
+}
+
+export interface AccountMember {
+  accountId: string
+  userId: string
+  isOwner: boolean
+  userName?: string
+  userEmail?: string
+}
+
 export type Direction = 'income' | 'expense' | 'transfer'
 export type Source = 'revolut' | 'crelan' | 'generic'
 export type RecurringType = 'one_time' | 'recurring'
@@ -6,6 +30,7 @@ export type MatchType = 'description_contains' | 'counterparty_exact' | 'merchan
 
 export interface Transaction {
   id: string
+  accountId: string | null
   source: Source
   sourceFileName: string
   sourceTransactionId: string | null

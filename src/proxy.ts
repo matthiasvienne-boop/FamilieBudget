@@ -6,12 +6,16 @@ const SECRET = new TextEncoder().encode(
 )
 const COOKIE_NAME = 'fb_token'
 
-const PUBLIC_PATHS = ['/auth/login', '/auth/setup', '/api/auth']
+const PUBLIC_PREFIXES = ['/auth/', '/api/auth/']
+const PUBLIC_EXACT = new Set(['/', '/favicon.ico'])
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p))
+  const isPublic =
+    PUBLIC_EXACT.has(pathname) ||
+    PUBLIC_PREFIXES.some(p => pathname.startsWith(p))
+
   if (isPublic) return NextResponse.next()
 
   const token = request.cookies.get(COOKIE_NAME)?.value
@@ -31,5 +35,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|.*\\.png$|.*\\.svg$|.*\\.ico$).*)'],
 }

@@ -14,6 +14,7 @@ interface Goal {
   month: string | null
   goalAmount: number
   direction: string
+  period: 'month' | 'year'
 }
 
 interface HistoryRow {
@@ -33,16 +34,33 @@ interface CategoryData {
   listName: string
   goal: number | null
   goalId: string | null
+  goalPeriod: 'month' | 'year'
   actual: number
   history: { month: string; total: number }[]
   avg: number
 }
 
+interface GroupRow {
+  groupName: string
+  total: number
+  count: number
+}
+
+interface TxRow {
+  name: string
+  total: number
+  count: number
+}
+
 interface DrilldownState {
   listName: string
   month: string
-  rows: { name: string; total: number; count: number }[]
   monthTotal: number
+  groups: GroupRow[]
+  // level 2
+  selectedGroup?: string
+  txRows?: TxRow[]
+  txLoading?: boolean
 }
 
 function MonthlyBarChart({
@@ -91,11 +109,12 @@ function CategoryRow({
   onDrilldown,
 }: {
   cat: CategoryData
-  onSaveGoal: (listName: string, amount: number | null) => Promise<void>
+  onSaveGoal: (listName: string, amount: number | null, period: 'month' | 'year') => Promise<void>
   onDrilldown: (listName: string, month: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [inputVal, setInputVal] = useState(String(cat.goal ?? ''))
+  const [periodVal, setPeriodVal] = useState<'month' | 'year'>(cat.goalPeriod)
   const [saving, setSaving] = useState(false)
   const [showChart, setShowChart] = useState(false)
 
@@ -105,7 +124,7 @@ function CategoryRow({
   const handleSave = async () => {
     setSaving(true)
     const amount = parseFloat(inputVal.replace(',', '.'))
-    await onSaveGoal(cat.listName, isNaN(amount) ? null : amount)
+    await onSaveGoal(cat.listName, isNaN(amount) ? null : amount, periodVal)
     setSaving(false)
     setEditing(false)
   }
@@ -126,7 +145,10 @@ function CategoryRow({
             <span className={clsx('text-sm font-medium', over ? 'text-red-600' : 'text-slate-700')}>
               {formatEuro(cat.actual)}
               {cat.goal != null && (
-                <span className="text-slate-400 font-normal"> / {formatEuro(cat.goal)}</span>
+                <span className="text-slate-400 font-normal">
+                  {' '}/ {formatEuro(cat.goal)}{' '}
+                  <span className="text-xs">{cat.goalPeriod === 'year' ? 'p/j' : 'p/m'}</span>
+                </span>
               )}
             </span>
             <button
@@ -154,17 +176,25 @@ function CategoryRow({
 
         {/* Goal edit */}
         {editing ? (
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className="text-xs text-slate-500">Doel (€):</span>
             <input
               type="number"
               value={inputVal}
               onChange={e => setInputVal(e.target.value)}
-              className="flex-1 border border-slate-200 rounded-lg px-2 py-1 text-sm"
+              className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-sm"
               placeholder={cat.avg > 0 ? `Gem: ${Math.round(cat.avg)}` : '0'}
               autoFocus
               onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false) }}
             />
+            <select
+              value={periodVal}
+              onChange={e => setPeriodVal(e.target.value as 'month' | 'year')}
+              className="border border-slate-200 rounded-lg px-2 py-1 text-sm bg-white"
+            >
+              <option value="month">per maand</option>
+              <option value="year">per jaar</option>
+            </select>
             <button onClick={handleSave} disabled={saving} className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
               <Check size={14} />
             </button>
@@ -174,7 +204,7 @@ function CategoryRow({
           </div>
         ) : (
           <button
-            onClick={() => { setInputVal(String(cat.goal ?? '')); setEditing(true) }}
+            onClick={() => { setInputVal(String(cat.goal ?? '')); setPeriodVal(cat.goalPeriod); setEditing(true) }}
             className="text-xs text-blue-600 hover:text-blue-700 mt-1"
           >
             {cat.goal != null ? 'Doel aanpassen' : '+ Doel instellen'}
@@ -205,6 +235,7 @@ export default function BudgetContent() {
   const [goals, setGoals] = useState<Goal[]>([])
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [currentMonth, setCurrentMonth] = useState<CurrentRow[]>([])
+  const [currentYear, setCurrentYear] = useState<CurrentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [drilldown, setDrilldown] = useState<DrilldownState | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
@@ -215,6 +246,7 @@ export default function BudgetContent() {
     setGoals(data.goals)
     setHistory(data.history)
     setCurrentMonth(data.currentMonth)
+    setCurrentYear(data.currentYear ?? [])
     setLoading(false)
   }, [])
 
@@ -222,8 +254,35 @@ export default function BudgetContent() {
 
   const handleDrilldown = useCallback(async (listName: string, month: string) => {
     setDrillLoading(true)
-    setDrilldown({ listName, month, rows: [], monthTotal: 0 })
+    setDrilldown({ listName, month, monthTotal: 0, groups: [] })
     const res = await fetch(`/api/transactions?listName=${encodeURIComponent(listName)}&month=${month}&pageSize=9999&direction=expense`)
+    const data = await res.json()
+    const txs: Transaction[] = data.data || []
+
+    const map = new Map<string, { total: number; count: number }>()
+    for (const tx of txs) {
+      const key = tx.groupName || '(geen groep)'
+      const existing = map.get(key) ?? { total: 0, count: 0 }
+      map.set(key, { total: existing.total + Math.abs(tx.amount), count: existing.count + 1 })
+    }
+
+    const groups = Array.from(map.entries())
+      .map(([groupName, v]) => ({ groupName, ...v }))
+      .sort((a, b) => b.total - a.total)
+
+    const monthTotal = groups.reduce((s, r) => s + r.total, 0)
+    setDrilldown({ listName, month, groups, monthTotal })
+    setDrillLoading(false)
+  }, [])
+
+  const handleGroupDrilldown = useCallback(async (groupName: string) => {
+    setDrilldown(prev => prev ? { ...prev, selectedGroup: groupName, txRows: [], txLoading: true } : prev)
+    const dd = drilldown
+    if (!dd) return
+    const res = await fetch(
+      `/api/transactions?listName=${encodeURIComponent(dd.listName)}&month=${dd.month}&pageSize=9999&direction=expense` +
+      (groupName !== '(geen groep)' ? `&groupName=${encodeURIComponent(groupName)}` : '')
+    )
     const data = await res.json()
     const txs: Transaction[] = data.data || []
 
@@ -234,14 +293,12 @@ export default function BudgetContent() {
       map.set(name, { total: existing.total + Math.abs(tx.amount), count: existing.count + 1 })
     }
 
-    const rows = Array.from(map.entries())
+    const txRows = Array.from(map.entries())
       .map(([name, v]) => ({ name, ...v }))
       .sort((a, b) => b.total - a.total)
 
-    const monthTotal = rows.reduce((s, r) => s + r.total, 0)
-    setDrilldown({ listName, month, rows, monthTotal })
-    setDrillLoading(false)
-  }, [])
+    setDrilldown(prev => prev ? { ...prev, txRows, txLoading: false } : prev)
+  }, [drilldown])
 
   const handleSaveGoal = async (listName: string, amount: number | null) => {
     if (amount == null) return
@@ -270,7 +327,9 @@ export default function BudgetContent() {
 
   const categories: CategoryData[] = allLists.map(listName => {
     const goal = goals.find(g => g.listName === listName && !g.groupName && !g.month)
-    const actual = currentMonth
+    const isYearly = goal?.period === 'year'
+    const actualSource = isYearly ? currentYear : currentMonth
+    const actual = actualSource
       .filter(c => c.listName === listName)
       .reduce((sum, c) => sum + c.total, 0)
     // Aggregate all groups into list-level monthly totals
@@ -287,6 +346,7 @@ export default function BudgetContent() {
       listName,
       goal: goal?.goalAmount ?? null,
       goalId: goal?.id ?? null,
+      goalPeriod: goal?.period ?? 'month',
       actual,
       history: listHistory,
       avg,
@@ -349,36 +409,92 @@ export default function BudgetContent() {
         <Modal
           open
           onClose={() => setDrilldown(null)}
-          title={`${drilldown.listName} — ${formatMonth(drilldown.month)}`}
+          title={
+            drilldown.selectedGroup
+              ? `${drilldown.listName} / ${drilldown.selectedGroup} — ${formatMonth(drilldown.month)}`
+              : `${drilldown.listName} — ${formatMonth(drilldown.month)}`
+          }
           size="md"
         >
-          {drillLoading ? (
-            <div className="space-y-2 py-2">
-              {[1,2,3].map(i => <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />)}
-            </div>
-          ) : (
-            <div>
-              <div className="divide-y divide-slate-50">
-                {drilldown.rows.map(row => (
-                  <div key={row.name} className="flex items-center justify-between py-2.5 gap-3">
-                    <div className="min-w-0">
-                      <span className="text-sm text-slate-800 truncate block">{row.name}</span>
-                      <span className="text-xs text-slate-400">{row.count}×</span>
-                    </div>
-                    <span className="text-sm font-medium text-red-600 shrink-0">{formatEuro(row.total)}</span>
+          {/* Back button when in group detail */}
+          {drilldown.selectedGroup && (
+            <button
+              onClick={() => setDrilldown(prev => prev ? { ...prev, selectedGroup: undefined, txRows: undefined } : prev)}
+              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 mb-3"
+            >
+              ← Terug naar groepen
+            </button>
+          )}
+
+          {/* Level 1: groups */}
+          {!drilldown.selectedGroup && (
+            drillLoading ? (
+              <div className="space-y-2 py-2">
+                {[1,2,3].map(i => <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />)}
+              </div>
+            ) : (
+              <div>
+                <div className="divide-y divide-slate-50">
+                  {drilldown.groups.map(row => (
+                    <button
+                      key={row.groupName}
+                      onClick={() => handleGroupDrilldown(row.groupName)}
+                      className="w-full flex items-center justify-between py-2.5 gap-3 hover:bg-slate-50 rounded-lg px-1 -mx-1 transition-colors"
+                    >
+                      <div className="min-w-0 text-left">
+                        <span className="text-sm text-slate-800 truncate block">{row.groupName}</span>
+                        <span className="text-xs text-slate-400">{row.count} transactie{row.count !== 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-sm font-medium text-red-600">{formatEuro(row.total)}</span>
+                        <ChevronUp size={14} className="text-slate-300 rotate-90" />
+                      </div>
+                    </button>
+                  ))}
+                  {drilldown.groups.length === 0 && (
+                    <p className="text-sm text-slate-400 py-4 text-center">Geen transacties gevonden</p>
+                  )}
+                </div>
+                {drilldown.groups.length > 0 && (
+                  <div className="border-t border-slate-100 pt-3 mt-1 flex justify-between text-sm font-semibold">
+                    <span className="text-slate-700">Totaal</span>
+                    <span className="text-red-600">{formatEuro(drilldown.monthTotal)}</span>
                   </div>
-                ))}
-                {drilldown.rows.length === 0 && (
-                  <p className="text-sm text-slate-400 py-4 text-center">Geen transacties gevonden</p>
                 )}
               </div>
-              {drilldown.rows.length > 0 && (
-                <div className="border-t border-slate-100 pt-3 mt-1 flex justify-between text-sm font-semibold">
-                  <span className="text-slate-700">Totaal</span>
-                  <span className="text-red-600">{formatEuro(drilldown.monthTotal)}</span>
+            )
+          )}
+
+          {/* Level 2: transactions within group */}
+          {drilldown.selectedGroup && (
+            drilldown.txLoading ? (
+              <div className="space-y-2 py-2">
+                {[1,2,3].map(i => <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />)}
+              </div>
+            ) : (
+              <div>
+                <div className="divide-y divide-slate-50">
+                  {(drilldown.txRows || []).map(row => (
+                    <div key={row.name} className="flex items-center justify-between py-2.5 gap-3">
+                      <div className="min-w-0">
+                        <span className="text-sm text-slate-800 truncate block">{row.name}</span>
+                        <span className="text-xs text-slate-400">{row.count}×</span>
+                      </div>
+                      <span className="text-sm font-medium text-red-600 shrink-0">{formatEuro(row.total)}</span>
+                    </div>
+                  ))}
+                  {!drilldown.txRows?.length && (
+                    <p className="text-sm text-slate-400 py-4 text-center">Geen transacties gevonden</p>
+                  )}
                 </div>
-              )}
-            </div>
+                {(drilldown.txRows?.length ?? 0) > 0 && (
+                  <div className="border-t border-slate-100 pt-3 mt-1 flex justify-between text-sm font-semibold">
+                    <span className="text-slate-700">Totaal</span>
+                    <span className="text-red-600">{formatEuro(drilldown.txRows!.reduce((s, r) => s + r.total, 0))}</span>
+                  </div>
+                )}
+              </div>
+            )
           )}
         </Modal>
       )}

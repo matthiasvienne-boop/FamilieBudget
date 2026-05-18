@@ -10,6 +10,7 @@ import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import ClassificationModal from '@/components/transactions/ClassificationModal'
 import BulkAIModal from '@/components/transactions/BulkAIModal'
+import SplitModal from '@/components/transactions/SplitModal'
 import {
   ChevronLeft,
   ChevronRight,
@@ -22,6 +23,7 @@ import {
   X,
   ChevronDown,
   Sparkles,
+  Scissors,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -60,7 +62,13 @@ function TransactionsPageInner() {
   const [classifyTx, setClassifyTx] = useState<Transaction | null>(null)
   const [classifyBulk, setClassifyBulk] = useState(false)
   const [bulkAI, setBulkAI] = useState(false)
+  const [splitTx, setSplitTx] = useState<Transaction | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const isVisaTx = (tx: Transaction) => {
+    const haystack = `${tx.description} ${tx.counterparty ?? ''} ${tx.merchant ?? ''}`.toLowerCase()
+    return haystack.includes('visa') || tx.isSplit === 1
+  }
 
   const months = getLast12Months()
 
@@ -348,7 +356,12 @@ function TransactionsPageInner() {
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  {tx.listName ? (
+                  {tx.isSplit === 1 ? (
+                    <div className="flex items-center gap-1 text-xs text-violet-600 font-medium">
+                      <Scissors size={11} />
+                      Gesplitst
+                    </div>
+                  ) : tx.listName ? (
                     <div>
                       <div className="text-xs font-medium text-slate-700">{tx.listName}</div>
                       {tx.groupName && <div className="text-xs text-slate-400">{tx.groupName}</div>}
@@ -369,13 +382,24 @@ function TransactionsPageInner() {
                   {tx.direction === 'income' ? '+' : ''}{formatEuro(tx.amount)}
                 </td>
                 <td className="px-4 py-3 text-center">
-                  <button
-                    onClick={() => setClassifyTx(tx)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-blue-600 transition-colors"
-                    title="Categoriseren"
-                  >
-                    <Tag size={15} />
-                  </button>
+                  <div className="flex items-center gap-1 justify-center">
+                    <button
+                      onClick={() => setClassifyTx(tx)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-blue-600 transition-colors"
+                      title="Categoriseren"
+                    >
+                      <Tag size={15} />
+                    </button>
+                    {isVisaTx(tx) && (
+                      <button
+                        onClick={() => setSplitTx(tx)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-violet-600 transition-colors"
+                        title="Splitsen"
+                      >
+                        <Scissors size={15} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -406,7 +430,9 @@ function TransactionsPageInner() {
                 <div className="text-xs text-slate-400 mt-0.5">{formatDate(tx.transactionDate)}</div>
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   <Badge variant="default">{tx.source}</Badge>
-                  {tx.listName ? (
+                  {tx.isSplit === 1 ? (
+                    <span className="flex items-center gap-0.5 text-xs text-violet-600 font-medium"><Scissors size={10} />Gesplitst</span>
+                  ) : tx.listName ? (
                     <Badge variant="default">{tx.listName}</Badge>
                   ) : (
                     <span className="text-xs text-slate-300 italic">Ongecategoriseerd</span>
@@ -427,6 +453,15 @@ function TransactionsPageInner() {
                 >
                   <Tag size={15} />
                 </button>
+                {isVisaTx(tx) && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setSplitTx(tx) }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-violet-600"
+                    title="Splitsen"
+                  >
+                    <Scissors size={15} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -505,6 +540,18 @@ function TransactionsPageInner() {
           groups={groups}
           onClose={() => setBulkAI(false)}
           onDone={() => { setBulkAI(false); setSelected(new Set()); fetchTransactions() }}
+          onListsUpdated={(l, g) => { setLists(l); setGroups(g) }}
+        />
+      )}
+
+      {/* Split modal */}
+      {splitTx && (
+        <SplitModal
+          transaction={splitTx}
+          lists={lists}
+          groups={groups}
+          onClose={() => setSplitTx(null)}
+          onSaved={() => { setSplitTx(null); fetchTransactions() }}
         />
       )}
 

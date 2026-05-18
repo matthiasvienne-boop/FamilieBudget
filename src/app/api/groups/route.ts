@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { requireAuth } from '@/lib/api-auth'
 import { v4 as uuidv4 } from 'uuid'
 
 export async function POST(request: NextRequest) {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const body = await request.json()
@@ -26,11 +30,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(group)
   } catch (error) {
     console.error(error)
-    return NextResponse.json({ error: 'Failed to create group' }, { status: 500 })
+    return NextResponse.json({ error: 'Aanmaken mislukt' }, { status: 500 })
   }
 }
 
 export async function PATCH(request: NextRequest) {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const body = await request.json()
@@ -54,11 +61,14 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json(group)
   } catch (error) {
     console.error(error)
-    return NextResponse.json({ error: 'Failed to update group' }, { status: 500 })
+    return NextResponse.json({ error: 'Bijwerken mislukt' }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const { searchParams } = new URL(request.url)
@@ -77,6 +87,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error(error)
-    return NextResponse.json({ error: 'Failed to delete group' }, { status: 500 })
+    return NextResponse.json({ error: 'Verwijderen mislukt' }, { status: 500 })
   }
 }

@@ -1,11 +1,29 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { requireAuth } from '@/lib/api-auth'
+
+// Unified expense CTE: non-split transactions + split lines
+const EXPENSE_CTE = `
+  WITH expenses AS (
+    SELECT transactionDate, listName, groupName, ABS(amount) as amount
+    FROM transactions
+    WHERE isDeleted = 0 AND direction = 'expense' AND isSplit = 0
+    UNION ALL
+    SELECT t.transactionDate, s.listName, s.groupName, s.amount
+    FROM transaction_splits s
+    JOIN transactions t ON t.id = s.transactionId
+    WHERE t.isDeleted = 0 AND t.direction = 'expense'
+  )
+`
 
 export async function GET() {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
 
-    // Monthly stats: last 12 months
+    // Monthly stats: last 12 months (splits count as one transaction for cashflow/count)
     const monthlyStats = db.prepare(`
       SELECT
         strftime('%Y-%m', transactionDate) as month,
@@ -20,31 +38,29 @@ export async function GET() {
       ORDER BY month DESC
     `).all()
 
-    // Expense breakdown by list (current month)
+    // Expense breakdown by list (current month) — includes splits
     const expensesByList = db.prepare(`
+      ${EXPENSE_CTE}
       SELECT
         COALESCE(listName, 'Ongecategoriseerd') as listName,
-        SUM(ABS(amount)) as total,
+        SUM(amount) as total,
         COUNT(*) as count
-      FROM transactions
-      WHERE isDeleted = 0
-        AND direction = 'expense'
-        AND strftime('%Y-%m', transactionDate) = strftime('%Y-%m', 'now')
+      FROM expenses
+      WHERE strftime('%Y-%m', transactionDate) = strftime('%Y-%m', 'now')
       GROUP BY listName
       ORDER BY total DESC
     `).all()
 
-    // Expense breakdown by list + group (current month)
+    // Expense breakdown by list + group (current month) — includes splits
     const expensesByGroup = db.prepare(`
+      ${EXPENSE_CTE}
       SELECT
         COALESCE(listName, 'Ongecategoriseerd') as listName,
         COALESCE(groupName, '') as groupName,
-        SUM(ABS(amount)) as total,
+        SUM(amount) as total,
         COUNT(*) as count
-      FROM transactions
-      WHERE isDeleted = 0
-        AND direction = 'expense'
-        AND strftime('%Y-%m', transactionDate) = strftime('%Y-%m', 'now')
+      FROM expenses
+      WHERE strftime('%Y-%m', transactionDate) = strftime('%Y-%m', 'now')
       GROUP BY listName, groupName
       ORDER BY listName, total DESC
     `).all()
@@ -56,16 +72,15 @@ export async function GET() {
         SUM(amount) as total,
         COUNT(*) as count
       FROM transactions
-      WHERE isDeleted = 0
-        AND direction = 'income'
+      WHERE isDeleted = 0 AND direction = 'income'
         AND strftime('%Y-%m', transactionDate) = strftime('%Y-%m', 'now')
       GROUP BY listName
       ORDER BY total DESC
     `).all()
 
-    // Uncategorized count
+    // Uncategorized count (exclude split transactions — they're handled separately)
     const uncategorized = (db.prepare(
-      "SELECT COUNT(*) as count FROM transactions WHERE isDeleted = 0 AND listName IS NULL AND direction != 'transfer'"
+      "SELECT COUNT(*) as count FROM transactions WHERE isDeleted = 0 AND listName IS NULL AND isSplit = 0 AND direction != 'transfer'"
     ).get() as { count: number }).count
 
     // Recurring transactions

@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Email, naam en wachtwoord zijn verplicht' }, { status: 400 })
   }
 
-  if (password.length < 6) {
-    return NextResponse.json({ error: 'Wachtwoord moet minstens 6 tekens zijn' }, { status: 400 })
+  if (password.length < 8) {
+    return NextResponse.json({ error: 'Wachtwoord moet minstens 8 tekens zijn' }, { status: 400 })
   }
 
   const passwordHash = await bcrypt.hash(password, 12)
@@ -72,12 +72,16 @@ export async function PATCH(request: NextRequest) {
   if (role) updates.role = role
   if (typeof isActive === 'boolean') updates.isActive = isActive ? 1 : 0
   if (password) {
-    if (password.length < 6) return NextResponse.json({ error: 'Wachtwoord te kort' }, { status: 400 })
+    if (password.length < 8) return NextResponse.json({ error: 'Wachtwoord te kort (min 8 tekens)' }, { status: 400 })
     updates.passwordHash = await bcrypt.hash(password, 12)
   }
 
-  const fields = Object.keys(updates).map(k => `${k} = ?`).join(', ')
-  db.prepare(`UPDATE users SET ${fields} WHERE id = ?`).run(...Object.values(updates), id)
+  // Only build SET clause from safe known fields (prevent SQL injection via key names)
+  const ALLOWED = ['name', 'role', 'isActive', 'passwordHash', 'updatedAt'] as const
+  const safeEntries = Object.entries(updates).filter(([k]) => ALLOWED.includes(k as typeof ALLOWED[number]))
+  const fields = safeEntries.map(([k]) => `${k} = ?`).join(', ')
+  const vals = safeEntries.map(([, v]) => v)
+  db.prepare(`UPDATE users SET ${fields} WHERE id = ?`).run(...vals, id)
 
   return NextResponse.json({ success: true })
 }

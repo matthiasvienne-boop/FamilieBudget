@@ -1,5 +1,5 @@
 export type Direction = 'income' | 'expense' | 'transfer'
-export type Source = 'revolut' | 'crelan'
+export type Source = 'revolut' | 'crelan' | 'generic'
 export type RecurringType = 'one_time' | 'recurring'
 export type RecurringEndType = 'ongoing' | 'ends_on_date'
 export type MatchType = 'description_contains' | 'counterparty_exact' | 'merchant_exact' | 'amount_exact'
@@ -29,6 +29,7 @@ export interface Transaction {
   recurringEndType: RecurringEndType | null
   recurringEndDate: string | null
   notes: string | null
+  isSplit: number
   isDeleted: boolean
   createdAt: string
   updatedAt: string

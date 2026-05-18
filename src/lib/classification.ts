@@ -28,16 +28,21 @@ export function matchesRule(
   rule: ClassificationRule
 ): boolean {
   const value = rule.matchValue.toLowerCase()
+  const merchant = (transaction.merchant ?? '').toLowerCase()
+  const counterparty = (transaction.counterparty ?? '').toLowerCase()
+  const description = (transaction.description ?? '').toLowerCase()
 
   switch (rule.matchType) {
     case 'description_contains':
-      return (transaction.description?.toLowerCase() ?? '').includes(value)
+      return description.includes(value)
 
     case 'counterparty_exact':
-      return (transaction.counterparty?.toLowerCase() ?? '') === value
+      // Also match if merchant equals the value (Revolut stores name in merchant)
+      return counterparty === value || merchant === value
 
     case 'merchant_exact':
-      return (transaction.merchant?.toLowerCase() ?? '') === value
+      // Also match if counterparty contains the value (Crelan stores name in counterparty)
+      return merchant === value || counterparty.includes(value)
 
     case 'amount_exact':
       return Math.abs(transaction.amount ?? 0) === Math.abs(parseFloat(rule.matchValue))

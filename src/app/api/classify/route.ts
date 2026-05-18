@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { requireAuth } from '@/lib/api-auth'
 import Anthropic from '@anthropic-ai/sdk'
 
 export async function POST(request: NextRequest) {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const { description, counterparty, merchant, amount, direction } = await request.json()
 
-    // Get API key from settings or env
     const settingRow = db.prepare("SELECT value FROM app_settings WHERE key = 'anthropic_api_key'").get() as { value: string } | undefined
     const apiKey = settingRow?.value || process.env.ANTHROPIC_API_KEY
 
@@ -15,7 +18,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Geen Anthropic API-sleutel ingesteld' }, { status: 400 })
     }
 
-    // Get available lists and groups
     const lists = db.prepare('SELECT name FROM transaction_lists ORDER BY name').all() as { name: string }[]
     const groups = db.prepare('SELECT listName, name FROM transaction_groups ORDER BY listName, name').all() as { listName: string; name: string }[]
 
@@ -51,10 +53,14 @@ JSON antwoord:`,
       return NextResponse.json({ error: 'Kon geen suggestie genereren' }, { status: 500 })
     }
 
-    const suggestion = JSON.parse(jsonMatch[0])
-    return NextResponse.json(suggestion)
+    try {
+      const suggestion = JSON.parse(jsonMatch[0])
+      return NextResponse.json(suggestion)
+    } catch {
+      return NextResponse.json({ error: 'Ongeldige AI-respons' }, { status: 500 })
+    }
   } catch (error) {
     console.error(error)
-    return NextResponse.json({ error: 'Classificatie mislukt: ' + String(error) }, { status: 500 })
+    return NextResponse.json({ error: 'Classificatie mislukt' }, { status: 500 })
   }
 }

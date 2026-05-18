@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { requireAuth } from '@/lib/api-auth'
+import { matchesRule } from '@/lib/classification'
+import { ClassificationRule, Transaction } from '@/types'
 import { v4 as uuidv4 } from 'uuid'
 
 export async function GET() {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const rules = db.prepare('SELECT * FROM classification_rules ORDER BY priority DESC, createdAt DESC').all()
@@ -14,6 +20,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const body = await request.json()
@@ -47,8 +56,29 @@ export async function POST(request: NextRequest) {
       now, now
     )
 
-    const rule = db.prepare('SELECT * FROM classification_rules WHERE id = ?').get(id)
-    return NextResponse.json(rule)
+    const rule = db.prepare('SELECT * FROM classification_rules WHERE id = ?').get(id) as ClassificationRule
+
+    // Apply rule to all existing unclassified transactions that match
+    const unclassified = db.prepare(
+      "SELECT * FROM transactions WHERE isDeleted = 0 AND listName IS NULL"
+    ).all() as Transaction[]
+
+    const toUpdate = unclassified.filter(tx => matchesRule(tx, rule))
+
+    if (toUpdate.length > 0) {
+      const now2 = new Date().toISOString()
+      const update = db.prepare(
+        'UPDATE transactions SET listName = ?, groupName = ?, isRecurring = ?, recurringType = ?, updatedAt = ? WHERE id = ?'
+      )
+      const updateAll = db.transaction((txs: Transaction[]) => {
+        for (const tx of txs) {
+          update.run(rule.listName ?? null, rule.groupName ?? null, rule.isRecurring ? 1 : 0, rule.recurringType, now2, tx.id)
+        }
+      })
+      updateAll(toUpdate)
+    }
+
+    return NextResponse.json({ ...rule, appliedTo: toUpdate.length })
   } catch (error) {
     console.error(error)
     return NextResponse.json({ error: 'Failed to create rule' }, { status: 500 })
@@ -56,6 +86,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const { searchParams } = new URL(request.url)

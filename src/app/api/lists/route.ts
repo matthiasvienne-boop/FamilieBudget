@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { requireAuth } from '@/lib/api-auth'
 import { v4 as uuidv4 } from 'uuid'
 
 export async function GET() {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const lists = db.prepare('SELECT * FROM transaction_lists ORDER BY sortOrder, name').all()
@@ -15,6 +19,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const body = await request.json()
@@ -39,6 +46,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const body = await request.json()
@@ -75,6 +85,9 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const { error } = await requireAuth()
+  if (error) return error
+
   try {
     const db = getDb()
     const { searchParams } = new URL(request.url)

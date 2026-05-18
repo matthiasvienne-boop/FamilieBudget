@@ -45,6 +45,7 @@ function initSchema(db: Database.Database) {
       recurringEndType TEXT,
       recurringEndDate TEXT,
       notes TEXT,
+      isSplit INTEGER NOT NULL DEFAULT 0,
       isDeleted INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
@@ -103,6 +104,20 @@ function initSchema(db: Database.Database) {
       duplicateCount INTEGER NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS transaction_splits (
+      id TEXT PRIMARY KEY,
+      transactionId TEXT NOT NULL,
+      listName TEXT,
+      groupName TEXT,
+      amount REAL NOT NULL,
+      note TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (transactionId) REFERENCES transactions(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_splits_tx ON transaction_splits(transactionId);
+
     CREATE TABLE IF NOT EXISTS budget_goals (
       id TEXT PRIMARY KEY,
       listName TEXT NOT NULL,
@@ -131,7 +146,47 @@ function initSchema(db: Database.Database) {
       value TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'Suggestie',
+      section TEXT NOT NULL DEFAULT 'Andere',
+      status TEXT NOT NULL DEFAULT 'Nieuw',
+      created_by TEXT NOT NULL DEFAULT 'Gebruiker',
+      page TEXT,
+      admin_reply TEXT,
+      unread_by_admin INTEGER NOT NULL DEFAULT 1,
+      unread_by_user INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS feedback_replies (
+      id TEXT PRIMARY KEY,
+      feedback_id TEXT NOT NULL,
+      author TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (feedback_id) REFERENCES feedback(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS faq_items (
+      id TEXT PRIMARY KEY,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      is_published INTEGER NOT NULL DEFAULT 1,
+      source_feedback_id TEXT,
+      order_index INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `)
+
+  // Migrations: add columns that may not exist in older databases
+  try { db.exec("ALTER TABLE transactions ADD COLUMN isSplit INTEGER NOT NULL DEFAULT 0") } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE budget_goals ADD COLUMN period TEXT NOT NULL DEFAULT 'month'") } catch { /* already exists */ }
 
   seedDefaultLists(db)
 }

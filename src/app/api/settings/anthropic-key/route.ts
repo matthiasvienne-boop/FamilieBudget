@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { requireAuth, requireAdmin } from '@/lib/api-auth'
 
 export async function GET() {
+  const { error } = await requireAuth()
+  if (error) return error
+
   const db = getDb()
   const row = db.prepare("SELECT value FROM app_settings WHERE key = 'anthropic_api_key'").get() as { value: string } | undefined
 
@@ -13,9 +17,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { error } = await requireAdmin()
+  if (error) return error
+
   const { key } = await request.json()
-  if (!key || typeof key !== 'string') {
-    return NextResponse.json({ error: 'Ongeldige sleutel' }, { status: 400 })
+  if (!key || typeof key !== 'string' || !key.startsWith('sk-ant-')) {
+    return NextResponse.json({ error: 'Ongeldige Anthropic API-sleutel' }, { status: 400 })
   }
 
   const db = getDb()

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -9,11 +9,12 @@ import {
   Settings,
   RepeatIcon,
   Target,
+  LogOut,
 } from 'lucide-react'
 import clsx from 'clsx'
 
 const links = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/transactions', label: 'Transacties', icon: ArrowLeftRight },
   { href: '/budget', label: 'Budget', icon: Target },
   { href: '/import', label: 'Importeren', icon: Upload },
@@ -23,6 +24,13 @@ const links = [
 
 export default function Navigation({ mobile = false }: { mobile?: boolean }) {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/')
+    router.refresh()
+  }
 
   if (mobile) {
     return (
@@ -53,6 +61,13 @@ export default function Navigation({ mobile = false }: { mobile?: boolean }) {
           <Settings size={22} strokeWidth={pathname === '/settings' ? 2.5 : 1.8} />
           <span>Meer</span>
         </Link>
+        <button
+          onClick={handleLogout}
+          className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-xs text-slate-500 hover:text-red-500 transition-colors"
+        >
+          <LogOut size={22} strokeWidth={1.8} />
+          <span>Afmelden</span>
+        </button>
       </div>
     )
   }
@@ -65,7 +80,7 @@ export default function Navigation({ mobile = false }: { mobile?: boolean }) {
       </div>
       <nav className="flex-1 px-2 py-4 space-y-0.5">
         {links.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== '/' && pathname.startsWith(href))
+          const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
           return (
             <Link
               key={href}
@@ -83,8 +98,16 @@ export default function Navigation({ mobile = false }: { mobile?: boolean }) {
           )
         })}
       </nav>
-      <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-400">
-        Vienne Gezin
+      <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between">
+        <span className="text-xs text-slate-400">Vienne Gezin</span>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
+          title="Afmelden"
+        >
+          <LogOut size={14} />
+          Afmelden
+        </button>
       </div>
     </div>
   )

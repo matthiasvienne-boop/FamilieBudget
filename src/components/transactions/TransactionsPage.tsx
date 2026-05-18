@@ -22,8 +22,10 @@ import {
   RepeatIcon,
   X,
   ChevronDown,
+  ChevronUp,
   Sparkles,
   Scissors,
+  ChevronsUpDown,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -68,7 +70,9 @@ function TransactionsPageInner() {
   const [lists, setLists] = useState<TransactionList[]>([])
   const [groups, setGroups] = useState<TransactionGroup[]>([])
   const [accounts, setAccounts] = useState<AccountOption[]>([])
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(true)
+  const [sortBy, setSortBy] = useState<'transactionDate' | 'amount' | 'description'>('transactionDate')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [classifyTx, setClassifyTx] = useState<Transaction | null>(null)
   const [classifyBulk, setClassifyBulk] = useState(false)
   const [bulkAI, setBulkAI] = useState(false)
@@ -93,6 +97,8 @@ function TransactionsPageInner() {
     if (filters.uncategorized) params.set('uncategorized', 'true')
     if (filters.search) params.set('search', filters.search)
     if (filters.accountId) params.set('accountId', filters.accountId)
+    params.set('sortBy', sortBy)
+    params.set('sortDir', sortDir)
     params.set('page', String(page))
     params.set('pageSize', String(pageSize))
 
@@ -101,7 +107,7 @@ function TransactionsPageInner() {
     setTransactions(data.data || [])
     setTotal(data.total || 0)
     setLoading(false)
-  }, [filters, page, pageSize])
+  }, [filters, page, pageSize, sortBy, sortDir])
 
   useEffect(() => {
     fetchTransactions()
@@ -335,11 +341,11 @@ function TransactionsPageInner() {
                   className="rounded border-slate-300"
                 />
               </th>
-              <th className="text-left px-4 py-3 text-slate-500 font-medium">Datum</th>
-              <th className="text-left px-4 py-3 text-slate-500 font-medium">Omschrijving</th>
+              <SortTh col="transactionDate" label="Datum" sortBy={sortBy} sortDir={sortDir} onSort={(c, d) => { setSortBy(c); setSortDir(d); setPage(1) }} />
+              <SortTh col="description" label="Omschrijving" sortBy={sortBy} sortDir={sortDir} onSort={(c, d) => { setSortBy(c); setSortDir(d); setPage(1) }} />
               <th className="text-left px-4 py-3 text-slate-500 font-medium">Categorie</th>
               <th className="text-left px-4 py-3 text-slate-500 font-medium">Bron</th>
-              <th className="text-right px-4 py-3 text-slate-500 font-medium">Bedrag</th>
+              <SortTh col="amount" label="Bedrag" align="right" sortBy={sortBy} sortDir={sortDir} onSort={(c, d) => { setSortBy(c); setSortDir(d); setPage(1) }} />
               <th className="px-4 py-3 w-16"></th>
             </tr>
           </thead>
@@ -611,6 +617,34 @@ function TransactionsPageInner() {
         </div>
       </Modal>
     </div>
+  )
+}
+
+function SortTh({
+  col, label, align = 'left', sortBy, sortDir, onSort,
+}: {
+  col: 'transactionDate' | 'amount' | 'description'
+  label: string
+  align?: 'left' | 'right'
+  sortBy: string
+  sortDir: 'asc' | 'desc'
+  onSort: (col: 'transactionDate' | 'amount' | 'description', dir: 'asc' | 'desc') => void
+}) {
+  const active = sortBy === col
+  const nextDir = active && sortDir === 'desc' ? 'asc' : 'desc'
+  return (
+    <th
+      className={clsx('px-4 py-3 font-medium cursor-pointer select-none group', align === 'right' ? 'text-right' : 'text-left')}
+      onClick={() => onSort(col, nextDir)}
+    >
+      <span className={clsx('inline-flex items-center gap-1', active ? 'text-blue-600' : 'text-slate-500 group-hover:text-slate-700')}>
+        {label}
+        {active
+          ? sortDir === 'desc' ? <ChevronDown size={13} /> : <ChevronUp size={13} />
+          : <ChevronsUpDown size={13} className="opacity-30 group-hover:opacity-60" />
+        }
+      </span>
+    </th>
   )
 }
 

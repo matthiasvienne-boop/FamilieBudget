@@ -24,6 +24,10 @@ export async function GET(request: NextRequest) {
     const uncategorized = searchParams.get('uncategorized')
     const search = searchParams.get('search')
     const accountId = searchParams.get('accountId')
+    const sortByRaw = searchParams.get('sortBy') || 'transactionDate'
+    const sortDirRaw = searchParams.get('sortDir') || 'desc'
+    const SORT_COLS: Record<string, string> = { transactionDate: '"transactionDate"', amount: 'amount', description: 'description' }
+    const orderBy = `${SORT_COLS[sortByRaw] ?? '"transactionDate"'} ${sortDirRaw === 'asc' ? 'ASC' : 'DESC'}, id DESC`
     const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1)
     const pageSize = Math.min(500, Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50))
 
@@ -69,7 +73,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * pageSize
 
     const txResult = await db.query(
-      `SELECT * FROM transactions ${where} ORDER BY "transactionDate" DESC, id DESC LIMIT ${add(pageSize)} OFFSET ${add(offset)}`,
+      `SELECT * FROM transactions ${where} ORDER BY ${orderBy} LIMIT ${add(pageSize)} OFFSET ${add(offset)}`,
       params
     )
 

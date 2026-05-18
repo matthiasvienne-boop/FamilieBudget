@@ -202,6 +202,18 @@ async function initSchema() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS invites (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      token TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `)
 
   await seedDefaultLists()

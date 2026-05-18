@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { TransactionList, TransactionGroup, ClassificationRule } from '@/types'
-import { Plus, Trash2, Edit2, Check, X, ChevronRight, Tag, Zap, Users, Sparkles, LogOut } from 'lucide-react'
+import { Plus, Trash2, Edit2, Check, X, ChevronRight, Tag, Zap, Users, Sparkles, LogOut, Link, Copy } from 'lucide-react'
 import clsx from 'clsx'
 
 const COLORS = [
@@ -53,9 +53,11 @@ export default function SettingsPage() {
 
   // Users tab
   const [users, setUsers] = useState<User[]>([])
-  const [addingUser, setAddingUser] = useState(false)
-  const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'member' })
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null)
+  const [inviting, setInviting] = useState(false)
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'member' })
+  const [inviteLink, setInviteLink] = useState('')
+  const [inviteCopied, setInviteCopied] = useState(false)
 
   // AI tab
   const [apiKey, setApiKey] = useState('')
@@ -542,18 +544,40 @@ export default function SettingsPage() {
           ))}
 
           {currentUser?.role === 'admin' && (
-            addingUser ? (
+            inviteLink ? (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
+                <p className="text-sm font-medium text-green-800">Uitnodigingslink aangemaakt</p>
+                <p className="text-xs text-green-600">Stuur deze link naar je gezinslid. De link is 7 dagen geldig.</p>
+                <div className="flex gap-2">
+                  <input
+                    readOnly
+                    value={inviteLink}
+                    className="flex-1 border border-green-200 rounded-lg px-3 py-2 text-xs bg-white text-slate-600 truncate"
+                  />
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(inviteLink); setInviteCopied(true); setTimeout(() => setInviteCopied(false), 2000) }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700"
+                  >
+                    {inviteCopied ? <Check size={13} /> : <Copy size={13} />}
+                    {inviteCopied ? 'Gekopieerd' : 'Kopieer'}
+                  </button>
+                </div>
+                <button onClick={() => { setInviteLink(''); setInviting(false) }} className="text-xs text-slate-500 hover:text-slate-700">
+                  Sluiten
+                </button>
+              </div>
+            ) : inviting ? (
               <div className="bg-white rounded-xl border border-blue-200 p-4 space-y-3">
-                <h3 className="font-medium text-slate-800 text-sm">Nieuw gezinslid toevoegen</h3>
+                <h3 className="font-medium text-slate-800 text-sm">Gezinslid uitnodigen</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-slate-500 mb-1 block">Naam</label>
-                    <input value={newUser.name} onChange={e => setNewUser(u => ({ ...u, name: e.target.value }))}
+                    <input value={inviteForm.name} onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))}
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Voornaam" />
                   </div>
                   <div>
                     <label className="text-xs text-slate-500 mb-1 block">Rol</label>
-                    <select value={newUser.role} onChange={e => setNewUser(u => ({ ...u, role: e.target.value }))}
+                    <select value={inviteForm.role} onChange={e => setInviteForm(f => ({ ...f, role: e.target.value }))}
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
                       <option value="member">Lid</option>
                       <option value="admin">Beheerder</option>
@@ -562,46 +586,40 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <label className="text-xs text-slate-500 mb-1 block">E-mailadres</label>
-                  <input type="email" value={newUser.email} onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))}
+                  <input type="email" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="naam@voorbeeld.be" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Wachtwoord</label>
-                  <input type="password" value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Minstens 6 tekens" />
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={async () => {
-                      const res = await fetch('/api/auth/users', {
+                      const res = await fetch('/api/auth/invite', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(newUser),
+                        body: JSON.stringify(inviteForm),
                       })
+                      const data = await res.json()
                       if (res.ok) {
-                        setNewUser({ name: '', email: '', password: '', role: 'member' })
-                        setAddingUser(false)
-                        reloadUsers()
+                        setInviteLink(data.inviteUrl)
+                        setInviteForm({ name: '', email: '', role: 'member' })
                       } else {
-                        const err = await res.json()
-                        alert(err.error || 'Aanmaken mislukt')
+                        alert(data.error || 'Uitnodiging mislukt')
                       }
                     }}
-                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center justify-center gap-2"
                   >
-                    Aanmaken
+                    <Link size={14} /> Link genereren
                   </button>
-                  <button onClick={() => setAddingUser(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm text-slate-600">
+                  <button onClick={() => setInviting(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm text-slate-600">
                     Annuleren
                   </button>
                 </div>
               </div>
             ) : (
               <button
-                onClick={() => setAddingUser(true)}
+                onClick={() => setInviting(true)}
                 className="flex items-center gap-2 w-full px-4 py-3 bg-white border border-dashed border-slate-200 rounded-xl text-sm text-slate-500 hover:border-blue-300 hover:text-blue-600 transition-colors"
               >
-                <Plus size={16} /> Gezinslid toevoegen
+                <Plus size={16} /> Gezinslid uitnodigen
               </button>
             )
           )}

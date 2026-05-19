@@ -75,7 +75,8 @@ export async function GET(request: NextRequest) {
     const [recurringRes, avgExpensesRes, avgIncomeRes] = await Promise.all([
       db.query(`
         SELECT
-          COALESCE(merchant, counterparty, description) as name,
+          COALESCE(merchant, counterparty, description) as series_key,
+          MAX("recurringLabel") as label,
           "listName", "groupName", direction, currency,
           AVG(ABS(amount)) as avg_amount,
           MAX("transactionDate") as last_date,
@@ -118,7 +119,8 @@ export async function GET(request: NextRequest) {
     ])
 
     type RawRow = {
-      name: string
+      series_key: string
+      label: string | null
       listName: string | null
       groupName: string | null
       direction: string
@@ -144,17 +146,18 @@ export async function GET(request: NextRequest) {
         medianGapDays = gaps[Math.floor(gaps.length / 2)]
       }
 
-      const { frequency, label, monthlyFactor } = classifyFrequency(medianGapDays)
+      const { frequency, label: freqLabel, monthlyFactor } = classifyFrequency(medianGapDays)
       const amount = parseFloat(row.avg_amount)
 
       return {
-        name: row.name,
+        seriesKey: row.series_key,
+        name: row.label || row.series_key,
         listName: row.listName,
         groupName: row.groupName,
         direction: row.direction as 'income' | 'expense',
         amount,
         frequency,
-        frequencyLabel: label,
+        frequencyLabel: freqLabel,
         monthlyEquivalent: amount * monthlyFactor,
         expectedNextMonth: isExpectedNextMonth(row.last_date, medianGapDays, nextMonthStart),
         lastDate: row.last_date,
@@ -195,6 +198,41 @@ export async function GET(request: NextRequest) {
       forecastIncome,
       forecastCashflow: forecastIncome - forecastExpenses,
     })
+  } catch (err) {
+    console.error(err)
+    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const { error, session } = await requireAuth()
+  if (error) return error
+
+  try {
+    const db = await getDb()
+    const uid = session.id
+    const { seriesKey, label } = await request.json() as { seriesKey: string; label: string | null }
+
+    if (!seriesKey) return NextResponse.json({ error: 'seriesKey required' }, { status: 400 })
+
+    // Build access filter so users can only label their own transactions
+    const p: unknown[] = []
+    const { ACCESS } = buildAccess(uid, p, 'all')
+    p.push(label || null)
+    const labelRef = `$${p.length}`
+    p.push(seriesKey)
+    const keyRef = `$${p.length}`
+
+    await db.query(`
+      UPDATE transactions
+      SET "recurringLabel" = ${labelRef}
+      WHERE "isRecurring" = true
+        AND "isDeleted" = false
+        AND COALESCE(merchant, counterparty, description) = ${keyRef}
+        AND ${ACCESS}
+    `, p)
+
+    return NextResponse.json({ success: true })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })

@@ -13,6 +13,7 @@ import {
   LogOut,
   MoreHorizontal,
   X,
+  TrendingUp,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -24,6 +25,7 @@ const mainLinks = [
 ]
 
 const moreLinks = [
+  { href: '/forecast', label: 'Prognose', icon: TrendingUp },
   { href: '/recurring', label: 'Terugkerend', icon: RepeatIcon },
   { href: '/settings', label: 'Instellingen', icon: Settings },
 ]

@@ -41,16 +41,10 @@ export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Pr
 }
 
 async function initSchema() {
-  await pool.query('SELECT pg_advisory_lock(987654321)')
+  const client = await pool.connect()
   try {
-    await _runSchema()
-  } finally {
-    await pool.query('SELECT pg_advisory_unlock(987654321)')
-  }
-}
-
-async function _runSchema() {
-  await pool.query(`
+    await client.query('SELECT pg_advisory_lock(987654321)')
+    await client.query(`
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
       source TEXT NOT NULL,
@@ -252,12 +246,15 @@ async function _runSchema() {
       created_at TEXT NOT NULL
     );
   `)
-
-  await seedDefaultLists()
+    await seedDefaultLists(client)
+    await client.query('SELECT pg_advisory_unlock(987654321)')
+  } finally {
+    client.release()
+  }
 }
 
-async function seedDefaultLists() {
-  const result = await pool.query('SELECT COUNT(*) as count FROM transaction_lists')
+async function seedDefaultLists(client: import('pg').PoolClient) {
+  const result = await client.query('SELECT COUNT(*) as count FROM transaction_lists')
   if (parseInt(result.rows[0].count) > 0) return
 
   const now = new Date().toISOString()
@@ -299,13 +296,13 @@ async function seedDefaultLists() {
   ]
 
   for (const l of lists) {
-    await pool.query(
+    await client.query(
       `INSERT INTO transaction_lists (id, name, color, "sortOrder", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
       [l.id, l.name, l.color, l.sortOrder, now, now]
     )
   }
   for (const g of groups) {
-    await pool.query(
+    await client.query(
       `INSERT INTO transaction_groups (id, "listId", "listName", name, "sortOrder", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
       [g.id, g.listId, g.listName, g.name, g.sortOrder, now, now]
     )

@@ -23,6 +23,21 @@ interface AccountOption {
   color: string | null
 }
 
+function extractRevolutProducts(csvText: string): string[] {
+  const lines = csvText.trim().split('\n')
+  if (lines.length < 2) return []
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+  const productIdx = headers.indexOf('Product')
+  if (productIdx === -1) return []
+  const products = new Set<string>()
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',')
+    const val = (cols[productIdx] || '').trim().replace(/^"|"$/g, '')
+    if (val) products.add(val)
+  }
+  return Array.from(products).sort()
+}
+
 export default function ImportPage() {
   const [tab, setTab] = useState<Tab>('bank')
   const [source, setSource] = useState<Source>('revolut')
@@ -34,17 +49,38 @@ export default function ImportPage() {
   const [showAIImport, setShowAIImport] = useState(false)
   const [accounts, setAccounts] = useState<AccountOption[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState<string>('')
+  const [productMap, setProductMap] = useState<Record<string, string>>({})
+  const [revolutProducts, setRevolutProducts] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch('/api/accounts').then(r => r.ok ? r.json() : []).then(setAccounts)
   }, [])
 
-  const handleFile = (f: File) => { setFile(f); setResult(null); setError(null) }
+  const handleFile = async (f: File) => {
+    setFile(f); setResult(null); setError(null); setProductMap({}); setRevolutProducts([])
+    if (source === 'revolut') {
+      const text = await f.text()
+      const products = extractRevolutProducts(text)
+      setRevolutProducts(products)
+      const initial: Record<string, string> = {}
+      products.forEach(p => { initial[p] = '' })
+      setProductMap(initial)
+    }
+  }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDragging(false)
     const f = e.dataTransfer.files[0]; if (f) handleFile(f)
+  }
+
+  const handleSourceChange = (s: Source) => {
+    setSource(s)
+    setRevolutProducts([])
+    setProductMap({})
+    setFile(null)
+    setResult(null)
+    setError(null)
   }
 
   const handleImport = async () => {
@@ -56,6 +92,13 @@ export default function ImportPage() {
       formData.append('file', file)
       formData.append('source', source)
       if (selectedAccountId) formData.append('accountId', selectedAccountId)
+
+      const filteredMap = Object.fromEntries(
+        Object.entries(productMap).filter(([, v]) => v !== '')
+      )
+      if (Object.keys(filteredMap).length > 0) {
+        formData.append('productAccountMap', JSON.stringify(filteredMap))
+      }
 
       const res = await fetch('/api/import', { method: 'POST', body: formData })
       const data = await res.json()
@@ -106,7 +149,7 @@ export default function ImportPage() {
               {(['revolut', 'crelan'] as Source[]).map(s => (
                 <button
                   key={s}
-                  onClick={() => setSource(s)}
+                  onClick={() => handleSourceChange(s)}
                   className={clsx(
                     'flex-1 py-3 rounded-xl border-2 text-sm font-semibold transition-colors capitalize',
                     source === s
@@ -159,7 +202,32 @@ export default function ImportPage() {
             )}
           </div>
 
-          {accounts.length > 0 && (
+          {source === 'revolut' && revolutProducts.length > 0 && (
+            <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4">
+              <label className="text-sm font-medium text-slate-700 mb-3 block">
+                Koppel producten aan rekeningen
+              </label>
+              <div className="space-y-2.5">
+                {revolutProducts.map(product => (
+                  <div key={product} className="flex items-center gap-3">
+                    <span className="text-sm text-slate-700 w-40 shrink-0 font-medium">{product}</span>
+                    <select
+                      value={productMap[product] ?? ''}
+                      onChange={e => setProductMap(m => ({ ...m, [product]: e.target.value }))}
+                      className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="">— Niet koppelen —</option>
+                      {accounts.map(a => (
+                        <option key={a.id} value={a.id}>{a.name}{a.bank ? ` (${a.bank})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {source === 'crelan' && accounts.length > 0 && (
             <div className="mb-4">
               <label className="text-sm font-medium text-slate-700 mb-1.5 block">Rekening (optioneel)</label>
               <select

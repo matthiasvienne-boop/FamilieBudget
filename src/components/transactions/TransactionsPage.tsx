@@ -28,6 +28,7 @@ import {
   ChevronsUpDown,
 } from 'lucide-react'
 import clsx from 'clsx'
+import Link from 'next/link'
 
 type FiltersState = {
   month: string
@@ -179,18 +180,27 @@ function TransactionsPageInner() {
           <h1 className="text-xl font-bold text-slate-900">Transacties</h1>
           <p className="text-sm text-slate-500">{total} resultaten</p>
         </div>
-        <button
-          onClick={() => setShowFilters(f => !f)}
-          className={clsx(
-            'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors',
-            showFilters
-              ? 'bg-blue-50 border-blue-200 text-blue-700'
-              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-          )}
-        >
-          <Filter size={16} />
-          Filters
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/transactions/prullenbak"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border bg-white border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
+          >
+            <Trash2 size={16} />
+            Prullenbak
+          </Link>
+          <button
+            onClick={() => setShowFilters(f => !f)}
+            className={clsx(
+              'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors',
+              showFilters
+                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+            )}
+          >
+            <Filter size={16} />
+            Filters
+          </button>
+        </div>
       </div>
 
       {/* Filters panel */}
@@ -343,6 +353,7 @@ function TransactionsPageInner() {
               </th>
               <SortTh col="transactionDate" label="Datum" sortBy={sortBy} sortDir={sortDir} onSort={(c, d) => { setSortBy(c); setSortDir(d); setPage(1) }} />
               <SortTh col="description" label="Omschrijving" sortBy={sortBy} sortDir={sortDir} onSort={(c, d) => { setSortBy(c); setSortDir(d); setPage(1) }} />
+              <th className="text-left px-4 py-3 text-slate-500 font-medium">Rekening</th>
               <th className="text-left px-4 py-3 text-slate-500 font-medium">Categorie</th>
               <th className="text-left px-4 py-3 text-slate-500 font-medium">Bron</th>
               <SortTh col="amount" label="Bedrag" align="right" sortBy={sortBy} sortDir={sortDir} onSort={(c, d) => { setSortBy(c); setSortDir(d); setPage(1) }} />
@@ -352,12 +363,12 @@ function TransactionsPageInner() {
           <tbody className="divide-y divide-slate-50">
             {loading && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">Laden...</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-400">Laden...</td>
               </tr>
             )}
             {!loading && transactions.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">Geen transacties gevonden</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-400">Geen transacties gevonden</td>
               </tr>
             )}
             {transactions.map(tx => (
@@ -389,6 +400,13 @@ function TransactionsPageInner() {
                       <RepeatIcon size={10} className="mr-1" />Recurring
                     </Badge>
                   )}
+                </td>
+                <td className="px-4 py-3">
+                  {tx.accountName ? (
+                    <span className="text-xs font-medium" style={tx.accountColor ? { color: tx.accountColor } : {}}>
+                      {tx.accountName}
+                    </span>
+                  ) : <span className="text-xs text-slate-300">—</span>}
                 </td>
                 <td className="px-4 py-3">
                   {tx.isSplit === 1 ? (

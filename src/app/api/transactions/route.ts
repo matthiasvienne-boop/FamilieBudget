@@ -73,7 +73,10 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * pageSize
 
     const txResult = await db.query(
-      `SELECT * FROM transactions ${where} ORDER BY ${orderBy} LIMIT ${add(pageSize)} OFFSET ${add(offset)}`,
+      `SELECT t.*, a.name as "accountName", a.color as "accountColor"
+       FROM transactions t
+       LEFT JOIN accounts a ON a.id = t."accountId"
+       ${where} ORDER BY ${orderBy} LIMIT ${add(pageSize)} OFFSET ${add(offset)}`,
       params
     )
 

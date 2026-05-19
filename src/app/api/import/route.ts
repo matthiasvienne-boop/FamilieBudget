@@ -27,6 +27,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ongeldige bankbron' }, { status: 400 })
     }
 
+    const productAccountMapRaw = (formData.get('productAccountMap') as string | null) || null
+    const productAccountMap: Record<string, string> = productAccountMapRaw
+      ? JSON.parse(productAccountMapRaw)
+      : {}
+
     const csvText = await file.text()
     const fileName = file.name
 
@@ -55,6 +60,11 @@ export async function POST(request: NextRequest) {
           const classified = applyRules(tx, rules)
           existingKeys.add(key)
 
+          const resolvedAccountId =
+            (tx.productOrAccount && productAccountMap[tx.productOrAccount]) ||
+            accountId ||
+            null
+
           await client.query(`
             INSERT INTO transactions (
               id, source, "sourceFileName", "sourceTransactionId",
@@ -79,7 +89,7 @@ export async function POST(request: NextRequest) {
             !!classified.isRecurring, classified.recurringType ?? 'one_time',
             classified.recurringEndType ?? null, classified.recurringEndDate ?? null,
             classified.notes ?? null, false, false,
-            classified.createdAt, classified.updatedAt, classified.rawData ?? null, accountId,
+            classified.createdAt, classified.updatedAt, classified.rawData ?? null, resolvedAccountId,
           ])
           imported++
         } catch (e) {

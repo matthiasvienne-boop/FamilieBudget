@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { TransactionList, TransactionGroup, ClassificationRule, Account, AccountType } from '@/types'
-import { Plus, Trash2, Edit2, Check, X, ChevronRight, Tag, Zap, Users, Sparkles, LogOut, Link, Copy, Landmark } from 'lucide-react'
+import { Plus, Trash2, Edit2, Check, X, ChevronRight, Tag, Zap, Users, Sparkles, LogOut, Link, Copy, Landmark, Lock, Globe } from 'lucide-react'
 import clsx from 'clsx'
 
 const COLORS = [
@@ -134,6 +134,15 @@ export default function SettingsPage() {
     reload()
   }
 
+  const toggleListVisibility = async (id: string, makeGlobal: boolean) => {
+    await fetch('/api/lists', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, makeGlobal }),
+    })
+    reload()
+  }
+
   const addGroup = async (listId: string, listName: string) => {
     if (!newGroupName.trim()) return
     await fetch('/api/groups', {
@@ -248,19 +257,39 @@ export default function SettingsPage() {
                 ) : (
                   <>
                     <span className="flex-1 font-medium text-slate-800">{list.name}</span>
-                    <span className="text-xs text-slate-400 mr-2">{listGroups(list.name).length} groepen</span>
-                    <button
-                      onClick={() => { setEditListId(list.id); setEditListName(list.name) }}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => deleteList(list.id)}
-                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <span className="text-xs text-slate-400 mr-1">{listGroups(list.name).length} groepen</span>
+                    {list.userId === null ? (
+                      <span className="flex items-center gap-1 text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full mr-1" title="Zichtbaar voor iedereen">
+                        <Globe size={11} /> Gedeeld
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mr-1" title="Alleen zichtbaar voor jou">
+                        <Lock size={11} /> Privé
+                      </span>
+                    )}
+                    {list.userId !== null && (
+                      <>
+                        <button
+                          onClick={() => toggleListVisibility(list.id, true)}
+                          className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg"
+                          title="Zichtbaar maken voor iedereen"
+                        >
+                          <Globe size={14} />
+                        </button>
+                        <button
+                          onClick={() => { setEditListId(list.id); setEditListName(list.name) }}
+                          className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => deleteList(list.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={() => setExpandedList(expandedList === list.id ? null : list.id)}
                       className="p-1.5 text-slate-400 hover:bg-slate-50 rounded-lg"

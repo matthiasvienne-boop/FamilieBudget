@@ -66,6 +66,7 @@ export interface Transaction {
 export interface TransactionList {
   id: string
   name: string
+  userId: string | null
   color: string | null
   sortOrder: number
   createdAt: string

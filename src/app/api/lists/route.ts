@@ -65,7 +65,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const db = await getDb()
-    const { id, name, color } = await request.json()
+    const { id, name, color, makeGlobal } = await request.json() as {
+      id: string; name?: string; color?: string; makeGlobal?: boolean
+    }
     const uid = session.id
 
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
@@ -73,7 +75,7 @@ export async function PATCH(request: NextRequest) {
     const listRes = await db.query('SELECT * FROM transaction_lists WHERE id = $1', [id])
     const list = listRes.rows[0] as { name: string; userId: string | null } | undefined
     if (!list) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    if (list.userId !== null && list.userId !== uid) {
+    if (list.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -84,6 +86,8 @@ export async function PATCH(request: NextRequest) {
 
     if (name !== undefined) sets.push(`name = ${add(name.trim())}`)
     if (color !== undefined) sets.push(`color = ${add(color)}`)
+    if (makeGlobal === true) sets.push(`"userId" = ${add(null)}`)
+    if (makeGlobal === false) sets.push(`"userId" = ${add(uid)}`)
     if (sets.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
     sets.push(`"updatedAt" = ${add(now)}`)
@@ -121,7 +125,7 @@ export async function DELETE(request: NextRequest) {
     const listRes = await db.query('SELECT * FROM transaction_lists WHERE id = $1', [id])
     const list = listRes.rows[0] as { name: string; userId: string | null } | undefined
     if (!list) return NextResponse.json({ success: true })
-    if (list.userId !== null && list.userId !== uid) {
+    if (list.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

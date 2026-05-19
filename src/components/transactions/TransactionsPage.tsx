@@ -186,7 +186,7 @@ function TransactionsPageInner() {
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border bg-white border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
           >
             <Trash2 size={16} />
-            Prullenbak
+            <span className="hidden sm:inline">Prullenbak</span>
           </Link>
           <button
             onClick={() => setShowFilters(f => !f)}
@@ -206,7 +206,7 @@ function TransactionsPageInner() {
       {/* Filters panel */}
       {showFilters && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4 space-y-3">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             {/* Month */}
             <div>
               <label className="text-xs text-slate-500 mb-1 block">Maand</label>
@@ -304,29 +304,31 @@ function TransactionsPageInner() {
 
       {/* Bulk actions bar */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4">
-          <span className="text-sm font-medium text-blue-700">{selected.size} geselecteerd</span>
-          <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 mb-4 overflow-x-auto">
+          <span className="text-sm font-medium text-blue-700 shrink-0">{selected.size} geselecteerd</span>
+          <div className="flex items-center gap-2 ml-auto shrink-0">
             <button
               onClick={() => setClassifyBulk(true)}
-              className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700"
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700 whitespace-nowrap"
             >
               <Tag size={14} />
-              Categoriseren
+              <span className="hidden sm:inline">Categoriseren</span>
+              <span className="sm:hidden">Categ.</span>
             </button>
             <button
               onClick={() => setBulkAI(true)}
-              className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 text-purple-700"
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 text-purple-700 whitespace-nowrap"
             >
               <Sparkles size={14} />
-              AI item per item
+              <span className="hidden sm:inline">AI item per item</span>
+              <span className="sm:hidden">AI</span>
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
-              className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 text-red-600"
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 text-red-600 whitespace-nowrap"
             >
               <Trash2 size={14} />
-              Verwijderen
+              <span className="hidden sm:inline">Verwijderen</span>
             </button>
             <button
               onClick={() => setSelected(new Set())}

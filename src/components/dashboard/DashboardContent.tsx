@@ -109,24 +109,29 @@ function IncomeExpenseChart({ stats }: { stats: MonthlyStats[] }) {
 
 function StatCard({
   label,
+  mobileLabel,
   value,
   sub,
   icon,
   color,
 }: {
   label: string
+  mobileLabel?: string
   value: string
   sub?: string
   icon: React.ReactNode
   color: string
 }) {
   return (
-    <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+    <div className="bg-white rounded-xl p-3 md:p-4 border border-slate-100 shadow-sm">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-slate-500">{label}</span>
-        <span className={clsx('p-2 rounded-lg', color)}>{icon}</span>
+        <span className="text-xs md:text-sm text-slate-500 leading-tight">
+          <span className="md:hidden">{mobileLabel ?? label}</span>
+          <span className="hidden md:inline">{label}</span>
+        </span>
+        <span className={clsx('p-1.5 md:p-2 rounded-lg shrink-0', color)}>{icon}</span>
       </div>
-      <div className="text-2xl font-bold text-slate-900">{value}</div>
+      <div className="text-lg md:text-2xl font-bold text-slate-900">{value}</div>
       {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
     </div>
   )
@@ -172,9 +177,10 @@ export default function DashboardContent() {
       )}
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <StatCard
           label="Inkomsten (huidige maand)"
+          mobileLabel="Inkomsten"
           value={formatEuro(currentMonth?.income ?? 0)}
           sub={prevMonth ? `vorige: ${formatEuro(prevMonth.income)}` : undefined}
           icon={<TrendingUp size={16} className="text-green-600" />}
@@ -182,6 +188,7 @@ export default function DashboardContent() {
         />
         <StatCard
           label="Uitgaven (huidige maand)"
+          mobileLabel="Uitgaven"
           value={formatEuro(currentMonth?.expenses ?? 0)}
           sub={prevMonth ? `vorige: ${formatEuro(prevMonth.expenses)}` : undefined}
           icon={<TrendingDown size={16} className="text-red-500" />}
@@ -219,19 +226,19 @@ export default function DashboardContent() {
               <thead>
                 <tr className="border-b border-slate-50">
                   <th className="text-left px-4 py-2 text-slate-500 font-medium">Maand</th>
-                  <th className="text-right px-4 py-2 text-slate-500 font-medium">Inkomsten</th>
-                  <th className="text-right px-4 py-2 text-slate-500 font-medium">Uitgaven</th>
-                  <th className="text-right px-4 py-2 text-slate-500 font-medium">Cashflow</th>
+                  <th className="text-right px-3 md:px-4 py-2 text-slate-500 font-medium hidden md:table-cell">Inkomsten</th>
+                  <th className="text-right px-3 md:px-4 py-2 text-slate-500 font-medium">Uitgaven</th>
+                  <th className="text-right px-3 md:px-4 py-2 text-slate-500 font-medium">Cashflow</th>
                 </tr>
               </thead>
               <tbody>
                 {data.monthlyStats.slice(0, 6).map(m => (
                   <tr key={m.month} className="border-b border-slate-50 hover:bg-slate-50">
-                    <td className="px-4 py-2.5 text-slate-700 font-medium">{formatMonth(m.month)}</td>
-                    <td className="px-4 py-2.5 text-right text-green-600">{formatEuro(m.income)}</td>
-                    <td className="px-4 py-2.5 text-right text-red-500">{formatEuro(m.expenses)}</td>
+                    <td className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">{formatMonth(m.month)}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right text-green-600 hidden md:table-cell">{formatEuro(m.income)}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right text-red-500">{formatEuro(m.expenses)}</td>
                     <td className={clsx(
-                      'px-4 py-2.5 text-right font-medium',
+                      'px-3 md:px-4 py-2.5 text-right font-medium whitespace-nowrap',
                       m.cashflow >= 0 ? 'text-green-700' : 'text-red-600'
                     )}>
                       {formatEuro(m.cashflow)}

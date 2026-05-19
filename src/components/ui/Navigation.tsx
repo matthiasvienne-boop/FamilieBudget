@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useState } from 'react'
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -10,21 +11,29 @@ import {
   RepeatIcon,
   Target,
   LogOut,
+  MoreHorizontal,
+  X,
 } from 'lucide-react'
 import clsx from 'clsx'
 
-const links = [
+const mainLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/transactions', label: 'Transacties', icon: ArrowLeftRight },
   { href: '/budget', label: 'Budget', icon: Target },
   { href: '/import', label: 'Importeren', icon: Upload },
-  { href: '/recurring', label: 'Recurring', icon: RepeatIcon },
+]
+
+const moreLinks = [
+  { href: '/recurring', label: 'Terugkerend', icon: RepeatIcon },
   { href: '/settings', label: 'Instellingen', icon: Settings },
 ]
+
+const allLinks = [...mainLinks, ...moreLinks]
 
 export default function Navigation({ mobile = false }: { mobile?: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
+  const [moreOpen, setMoreOpen] = useState(false)
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -33,42 +42,81 @@ export default function Navigation({ mobile = false }: { mobile?: boolean }) {
   }
 
   if (mobile) {
+    const moreActive = moreLinks.some(l => pathname.startsWith(l.href))
     return (
-      <div className="flex items-center justify-around py-2">
-        {links.slice(0, 4).map(({ href, label, icon: Icon }) => {
-          const active = pathname === href
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={clsx(
-                'flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-xs transition-colors',
-                active ? 'text-blue-600' : 'text-slate-500'
-              )}
+      <>
+        {/* More sheet */}
+        {moreOpen && (
+          <div className="fixed inset-0 z-40" onClick={() => setMoreOpen(false)}>
+            <div
+              className="absolute bottom-16 left-0 right-0 bg-white border-t border-slate-200 rounded-t-2xl shadow-xl px-4 pt-4 pb-6"
+              onClick={e => e.stopPropagation()}
             >
-              <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
-              <span>{label}</span>
-            </Link>
-          )
-        })}
-        <Link
-          href="/settings"
-          className={clsx(
-            'flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-xs transition-colors',
-            pathname === '/settings' ? 'text-blue-600' : 'text-slate-500'
-          )}
-        >
-          <Settings size={22} strokeWidth={pathname === '/settings' ? 2.5 : 1.8} />
-          <span>Meer</span>
-        </Link>
-        <button
-          onClick={handleLogout}
-          className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-xs text-slate-500 hover:text-red-500 transition-colors"
-        >
-          <LogOut size={22} strokeWidth={1.8} />
-          <span>Afmelden</span>
-        </button>
-      </div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-slate-700">Meer</span>
+                <button onClick={() => setMoreOpen(false)} className="p-1 text-slate-400">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="space-y-1">
+                {moreLinks.map(({ href, label, icon: Icon }) => {
+                  const active = pathname.startsWith(href)
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={() => setMoreOpen(false)}
+                      className={clsx(
+                        'flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors',
+                        active ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                      )}
+                    >
+                      <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+                      {label}
+                    </Link>
+                  )
+                })}
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut size={20} strokeWidth={1.8} />
+                  Afmelden
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-around py-1">
+          {mainLinks.map(({ href, label, icon: Icon }) => {
+            const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={clsx(
+                  'flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl text-xs transition-colors min-w-[56px]',
+                  active ? 'text-blue-600' : 'text-slate-500'
+                )}
+              >
+                <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
+                <span className="leading-tight">{label}</span>
+              </Link>
+            )
+          })}
+          <button
+            onClick={() => setMoreOpen(o => !o)}
+            className={clsx(
+              'flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl text-xs transition-colors min-w-[56px]',
+              moreActive || moreOpen ? 'text-blue-600' : 'text-slate-500'
+            )}
+          >
+            <MoreHorizontal size={22} strokeWidth={1.8} />
+            <span className="leading-tight">Meer</span>
+          </button>
+        </div>
+      </>
     )
   }
 
@@ -79,7 +127,7 @@ export default function Navigation({ mobile = false }: { mobile?: boolean }) {
         <p className="text-xs text-slate-500 mt-0.5">Gezinsbudget 2026</p>
       </div>
       <nav className="flex-1 px-2 py-4 space-y-0.5">
-        {links.map(({ href, label, icon: Icon }) => {
+        {allLinks.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
           return (
             <Link

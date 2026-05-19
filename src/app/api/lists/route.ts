@@ -85,7 +85,8 @@ export async function PATCH(request: NextRequest) {
     const listRes = await db.query('SELECT * FROM transaction_lists WHERE id = $1', [id])
     const list = listRes.rows[0] as { name: string; userId: string | null } | undefined
     if (!list) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    if (list.userId !== uid) {
+    // Global lists (userId=null) can be claimed as private; owned lists require matching uid
+    if (list.userId !== null && list.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

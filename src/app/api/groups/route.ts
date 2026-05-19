@@ -73,9 +73,8 @@ export async function PATCH(request: NextRequest) {
     const old = oldRes.rows[0] as { name: string; listName: string; userId: string | null; listUserId: string | null } | undefined
     if (!old) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    // Must own the group (or the list if group has no individual ownership yet)
-    const effectiveOwner = old.userId ?? old.listUserId
-    if (effectiveOwner !== null && effectiveOwner !== uid) {
+    // Global groups (userId=null) can be claimed as private; owned groups require matching uid
+    if (old.userId !== null && old.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

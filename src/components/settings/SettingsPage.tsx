@@ -268,23 +268,24 @@ export default function SettingsPage() {
                     <span className="flex-1 font-medium text-slate-800">{list.name}</span>
                     <span className="text-xs text-slate-400 mr-1">{listGroups(list.name).length} groepen</span>
                     {list.userId === null ? (
-                      <span className="flex items-center gap-1 text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full mr-1" title="Zichtbaar voor iedereen">
+                      <button
+                        onClick={() => toggleListVisibility(list.id, false)}
+                        className="flex items-center gap-1 text-xs text-slate-400 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 px-2 py-0.5 rounded-full mr-1 transition-colors"
+                        title="Privé maken (alleen voor jou)"
+                      >
                         <Globe size={11} /> Gedeeld
-                      </span>
+                      </button>
                     ) : (
-                      <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mr-1" title="Alleen zichtbaar voor jou">
+                      <button
+                        onClick={() => toggleListVisibility(list.id, true)}
+                        className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 hover:bg-slate-100 hover:text-slate-500 px-2 py-0.5 rounded-full mr-1 transition-colors"
+                        title="Zichtbaar maken voor iedereen"
+                      >
                         <Lock size={11} /> Privé
-                      </span>
+                      </button>
                     )}
                     {list.userId !== null && (
                       <>
-                        <button
-                          onClick={() => toggleListVisibility(list.id, true)}
-                          className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg"
-                          title="Zichtbaar maken voor iedereen"
-                        >
-                          <Globe size={14} />
-                        </button>
                         <button
                           onClick={() => { setEditListId(list.id); setEditListName(list.name) }}
                           className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg"
@@ -334,20 +335,17 @@ export default function SettingsPage() {
                           <span className="text-xs text-slate-400 mr-1">•</span>
                           <span className="flex-1 text-sm text-slate-700">{g.name}</span>
                           {g.userId === null ? (
-                            <span className="flex items-center gap-0.5 text-xs text-slate-400" title="Zichtbaar voor iedereen">
-                              <Globe size={10} />
-                            </span>
+                            <button
+                              onClick={() => toggleGroupVisibility(g.id, false)}
+                              className="flex items-center gap-0.5 text-xs text-slate-400 hover:text-blue-500 p-1 rounded hover:bg-blue-50 transition-colors"
+                              title="Privé maken (alleen voor jou)"
+                            ><Globe size={10} /></button>
                           ) : (
-                            <span className="flex items-center gap-0.5 text-xs text-blue-500" title="Alleen zichtbaar voor jou">
-                              <Lock size={10} />
-                            </span>
-                          )}
-                          {g.userId !== null && (
                             <button
                               onClick={() => toggleGroupVisibility(g.id, true)}
-                              className="p-1 text-slate-300 hover:text-slate-500"
+                              className="flex items-center gap-0.5 text-xs text-blue-500 hover:text-slate-500 p-1 rounded hover:bg-slate-50 transition-colors"
                               title="Zichtbaar maken voor iedereen"
-                            ><Globe size={12} /></button>
+                            ><Lock size={10} /></button>
                           )}
                           <button
                             onClick={() => { setEditGroupId(g.id); setEditGroupName(g.name) }}

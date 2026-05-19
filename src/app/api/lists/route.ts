@@ -36,10 +36,19 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = await getDb()
-    const { name, color } = await request.json()
+    const { name, color, accountId } = await request.json()
     const uid = session.id
 
     if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
+
+    // Privacy: no accountId context (from Settings) → private by default
+    // personal account → private, shared/child account → global
+    let listUserId: string | null = uid
+    if (accountId) {
+      const accRes = await db.query('SELECT type FROM accounts WHERE id = $1', [accountId])
+      const acc = accRes.rows[0] as { type: string } | undefined
+      if (!acc || acc.type !== 'personal') listUserId = null
+    }
 
     const now = new Date().toISOString()
     const id = uuidv4()
@@ -48,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     await db.query(
       `INSERT INTO transaction_lists (id, name, "userId", color, "sortOrder", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [id, name.trim(), uid, color || null, maxOrder + 1, now, now]
+      [id, name.trim(), listUserId, color || null, maxOrder + 1, now, now]
     )
 
     const result = await db.query('SELECT * FROM transaction_lists WHERE id = $1', [id])

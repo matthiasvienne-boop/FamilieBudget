@@ -85,10 +85,11 @@ export default function ClassificationModal({
 
   const handleAddList = async () => {
     if (!newListName.trim()) return
+    const accountId = transaction?.accountId || sampleTransaction?.accountId || null
     const res = await fetch('/api/lists', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newListName.trim() }),
+      body: JSON.stringify({ name: newListName.trim(), accountId }),
     })
     const newList = await res.json()
     const listsRes = await fetch('/api/lists')

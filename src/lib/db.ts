@@ -278,6 +278,7 @@ async function initSchema() {
 
     await client.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "recurringLabel" TEXT`)
     await client.query(`ALTER TABLE transaction_groups ADD COLUMN IF NOT EXISTS "userId" TEXT`)
+    await client.query(`ALTER TABLE classification_rules ADD COLUMN IF NOT EXISTS "accountId" TEXT`)
 
     await seedDefaultLists(client)
     await client.query('SELECT pg_advisory_unlock(987654321)')

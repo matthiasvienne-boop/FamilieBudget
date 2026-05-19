@@ -90,6 +90,7 @@ export interface ClassificationRule {
   matchValue: string
   listName: string | null
   groupName: string | null
+  accountId: string | null
   isRecurring: boolean
   recurringType: RecurringType
   recurringEndType: RecurringEndType | null

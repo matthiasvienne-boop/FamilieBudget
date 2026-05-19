@@ -27,6 +27,9 @@ export function matchesRule(
   transaction: Partial<Transaction>,
   rule: ClassificationRule
 ): boolean {
+  // If rule is scoped to a specific account, only match transactions on that account
+  if (rule.accountId && transaction.accountId !== rule.accountId) return false
+
   const value = rule.matchValue.toLowerCase()
   const merchant = (transaction.merchant ?? '').toLowerCase()
   const counterparty = (transaction.counterparty ?? '').toLowerCase()

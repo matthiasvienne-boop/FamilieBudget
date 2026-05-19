@@ -37,6 +37,7 @@ export default function ClassificationModal({
   const [recurringEndType, setRecurringEndType] = useState(transaction?.recurringEndType || 'ongoing')
   const [recurringEndDate, setRecurringEndDate] = useState(transaction?.recurringEndDate || '')
   const [applyScope, setApplyScope] = useState<ApplyScope>('single')
+  const [accountScope, setAccountScope] = useState<'this' | 'all'>('all')
   const [showScopeQuestion, setShowScopeQuestion] = useState(false)
   const [newListName, setNewListName] = useState('')
   const [addingList, setAddingList] = useState(false)
@@ -152,10 +153,12 @@ export default function ClassificationModal({
           const matchValue = transaction.counterparty || transaction.merchant || transaction.description
           const matchType = transaction.counterparty ? 'counterparty_exact' : transaction.merchant ? 'merchant_exact' : 'description_contains'
 
+          const filterAccountId = accountScope === 'this' ? (transaction.accountId || null) : null
+
           // Apply to all existing
           if (applyScope === 'all_existing' || applyScope === 'all_existing_and_future') {
-            // Haal alle transacties op via search, filter daarna exact client-side
-            const res = await fetch(`/api/transactions?search=${encodeURIComponent(matchValue)}&pageSize=9999`)
+            const accountParam = filterAccountId ? `&accountId=${encodeURIComponent(filterAccountId)}` : ''
+            const res = await fetch(`/api/transactions?search=${encodeURIComponent(matchValue)}&pageSize=9999${accountParam}`)
             const data = await res.json()
             const needle = matchValue.toLowerCase()
             const ids = (data.data as Transaction[])
@@ -186,6 +189,7 @@ export default function ClassificationModal({
                 matchValue,
                 listName: selectedList || null,
                 groupName: selectedGroup || null,
+                accountId: filterAccountId,
                 isRecurring,
                 recurringType: isRecurring ? 'recurring' : 'one_time',
                 recurringEndType: isRecurring ? recurringEndType : null,
@@ -365,29 +369,55 @@ export default function ClassificationModal({
 
         {/* Apply scope question */}
         {showScopeQuestion && !isBulk && (
-          <div className="border border-amber-200 bg-amber-50 rounded-xl p-3">
-            <p className="text-sm font-medium text-amber-800 mb-2">
-              Wil je dit toepassen op alle transacties van{' '}
-              <span className="italic">{transaction?.merchant || transaction?.counterparty || transaction?.description}</span>?
-            </p>
-            <div className="space-y-1.5">
-              {[
-                { value: 'single' as ApplyScope, label: 'Alleen deze transactie' },
-                { value: 'all_existing' as ApplyScope, label: 'Alle bestaande transacties' },
-                { value: 'all_existing_and_future' as ApplyScope, label: 'Bestaande + toekomstige imports (regel aanmaken)' },
-              ].map(opt => (
-                <label key={opt.value} className="flex items-center gap-2 text-sm text-amber-700 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="applyScope"
-                    value={opt.value}
-                    checked={applyScope === opt.value}
-                    onChange={() => setApplyScope(opt.value)}
-                  />
-                  {opt.label}
-                </label>
-              ))}
+          <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-amber-800 mb-2">
+                Wil je dit toepassen op alle transacties van{' '}
+                <span className="italic">{transaction?.merchant || transaction?.counterparty || transaction?.description}</span>?
+              </p>
+              <div className="space-y-1.5">
+                {[
+                  { value: 'single' as ApplyScope, label: 'Alleen deze transactie' },
+                  { value: 'all_existing' as ApplyScope, label: 'Alle bestaande transacties' },
+                  { value: 'all_existing_and_future' as ApplyScope, label: 'Bestaande + toekomstige imports (regel aanmaken)' },
+                ].map(opt => (
+                  <label key={opt.value} className="flex items-center gap-2 text-sm text-amber-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="applyScope"
+                      value={opt.value}
+                      checked={applyScope === opt.value}
+                      onChange={() => setApplyScope(opt.value)}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
             </div>
+
+            {applyScope !== 'single' && transaction?.accountId && (
+              <div className="border-t border-amber-200 pt-2">
+                <p className="text-xs font-medium text-amber-700 mb-1.5">Op welke rekeningen toepassen?</p>
+                <div className="flex gap-1 bg-amber-100 rounded-lg p-1">
+                  {[
+                    { value: 'all' as const, label: 'Alle rekeningen' },
+                    { value: 'this' as const, label: 'Alleen deze rekening' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setAccountScope(opt.value)}
+                      className={`flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-colors ${
+                        accountScope === opt.value
+                          ? 'bg-white text-amber-800 shadow-sm'
+                          : 'text-amber-600 hover:text-amber-800'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

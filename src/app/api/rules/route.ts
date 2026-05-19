@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const db = await getDb()
     const body = await request.json()
     const {
-      matchType, matchValue, listName, groupName,
+      matchType, matchValue, listName, groupName, accountId,
       isRecurring, recurringType, recurringEndType, recurringEndDate,
       applyToFutureImports, priority,
     } = body
@@ -41,12 +41,12 @@ export async function POST(request: NextRequest) {
 
     await db.query(`
       INSERT INTO classification_rules
-        (id, "matchType", "matchValue", "listName", "groupName", "isRecurring", "recurringType",
+        (id, "matchType", "matchValue", "listName", "groupName", "accountId", "isRecurring", "recurringType",
          "recurringEndType", "recurringEndDate", "applyToFutureImports", priority, "createdAt", "updatedAt")
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     `, [
       id, matchType, matchValue.trim(),
-      listName ?? null, groupName ?? null,
+      listName ?? null, groupName ?? null, accountId ?? null,
       !!isRecurring, recurringType ?? 'one_time',
       recurringEndType ?? null, recurringEndDate ?? null,
       applyToFutureImports !== false, priority ?? 0,

@@ -18,7 +18,8 @@ export async function GET() {
       db.query(
         `SELECT tg.* FROM transaction_groups tg
          JOIN transaction_lists tl ON tl.id = tg."listId"
-         WHERE tl."userId" IS NULL OR tl."userId" = $1
+         WHERE (tl."userId" IS NULL OR tl."userId" = $1)
+           AND (tg."userId" IS NULL OR tg."userId" = $1)
          ORDER BY tg."listName", tg."sortOrder", tg.name`,
         [uid]
       ),

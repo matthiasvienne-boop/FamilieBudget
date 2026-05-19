@@ -154,6 +154,15 @@ export default function SettingsPage() {
     reload()
   }
 
+  const toggleGroupVisibility = async (id: string, makeGlobal: boolean) => {
+    await fetch('/api/groups', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, makeGlobal }),
+    })
+    reload()
+  }
+
   const saveGroupEdit = async (id: string) => {
     if (!editGroupName.trim()) return
     await fetch('/api/groups', {
@@ -324,6 +333,22 @@ export default function SettingsPage() {
                         <>
                           <span className="text-xs text-slate-400 mr-1">•</span>
                           <span className="flex-1 text-sm text-slate-700">{g.name}</span>
+                          {g.userId === null ? (
+                            <span className="flex items-center gap-0.5 text-xs text-slate-400" title="Zichtbaar voor iedereen">
+                              <Globe size={10} />
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-0.5 text-xs text-blue-500" title="Alleen zichtbaar voor jou">
+                              <Lock size={10} />
+                            </span>
+                          )}
+                          {g.userId !== null && (
+                            <button
+                              onClick={() => toggleGroupVisibility(g.id, true)}
+                              className="p-1 text-slate-300 hover:text-slate-500"
+                              title="Zichtbaar maken voor iedereen"
+                            ><Globe size={12} /></button>
+                          )}
                           <button
                             onClick={() => { setEditGroupId(g.id); setEditGroupName(g.name) }}
                             className="p-1 text-slate-300 hover:text-slate-500"

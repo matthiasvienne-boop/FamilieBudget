@@ -78,6 +78,7 @@ export interface TransactionGroup {
   listId: string
   listName: string
   name: string
+  userId: string | null
   sortOrder: number
   createdAt: string
   updatedAt: string

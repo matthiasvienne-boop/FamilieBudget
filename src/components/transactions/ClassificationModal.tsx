@@ -104,10 +104,11 @@ export default function ClassificationModal({
     if (!newGroupName.trim() || !selectedList) return
     const list = lists.find(l => l.name === selectedList)
     if (!list) return
+    const accountId = transaction?.accountId || sampleTransaction?.accountId || null
     const res = await fetch('/api/groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ listId: list.id, listName: list.name, name: newGroupName.trim() }),
+      body: JSON.stringify({ listId: list.id, listName: list.name, name: newGroupName.trim(), accountId }),
     })
     const newGroup = await res.json()
     const listsRes = await fetch('/api/lists')

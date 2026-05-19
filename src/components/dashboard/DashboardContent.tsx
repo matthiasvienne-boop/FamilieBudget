@@ -244,7 +244,7 @@ export default function DashboardContent() {
         <IncomeExpenseChart stats={[...data.monthlyStats].reverse()} />
       )}
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
         {/* Monthly overview table */}
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100">
@@ -317,6 +317,37 @@ export default function DashboardContent() {
                       ))}
                     </div>
                   )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Income breakdown */}
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100">
+            <h2 className="font-semibold text-slate-800">Inkomsten per categorie</h2>
+            <p className="text-xs text-slate-400">Huidige maand</p>
+          </div>
+          <div className="p-4 space-y-4">
+            {data.incomeByList.length === 0 && (
+              <p className="text-slate-400 text-sm text-center py-4">Geen inkomsten gevonden</p>
+            )}
+            {data.incomeByList.slice(0, 8).map(cat => {
+              const maxTotal = data.incomeByList[0]?.total || 1
+              const pct = Math.round((cat.total / maxTotal) * 100)
+              return (
+                <div key={cat.listName}>
+                  <div className="flex items-center justify-between text-sm mb-1">
+                    <span className="text-slate-700 font-semibold truncate mr-2">{cat.listName}</span>
+                    <span className="text-slate-600 shrink-0 font-medium">{formatEuro(cat.total)}</span>
+                  </div>
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 rounded-full transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
                 </div>
               )
             })}

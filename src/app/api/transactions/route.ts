@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const isRecurring = searchParams.get('isRecurring')
     const uncategorized = searchParams.get('uncategorized')
     const search = searchParams.get('search')
+    const seriesKey = searchParams.get('seriesKey')
     const accountId = searchParams.get('accountId')
     const sortByRaw = searchParams.get('sortBy') || 'transactionDate'
     const sortDirRaw = searchParams.get('sortDir') || 'desc'
@@ -56,6 +57,9 @@ export async function GET(request: NextRequest) {
     if (search) {
       const s = `%${search}%`
       where += ` AND (description ILIKE ${add(s)} OR counterparty ILIKE ${add(s)} OR merchant ILIKE ${add(s)})`
+    }
+    if (seriesKey) {
+      where += ` AND COALESCE(merchant, counterparty, description) = ${add(seriesKey)}`
     }
     if (accountId === '__none__') {
       where += ` AND "accountId" IS NULL`

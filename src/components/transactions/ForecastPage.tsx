@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { formatEuro, formatMonth } from '@/lib/utils'
-import { TrendingUp, TrendingDown, ArrowLeftRight, Calendar, Pencil, Check, X } from 'lucide-react'
+import { formatEuro, formatMonth, formatDate } from '@/lib/utils'
+import { TrendingUp, TrendingDown, ArrowLeftRight, Calendar, Pencil, Check, X, ChevronRight } from 'lucide-react'
 import clsx from 'clsx'
+import { Transaction } from '@/types'
 
 interface RecurringSeries {
   seriesKey: string
@@ -168,31 +169,83 @@ function SeriesRow({ r, nextMonth, onLabelSaved }: {
   nextMonth: string
   onLabelSaved: (seriesKey: string, newName: string | null) => void
 }) {
+  const [expanded, setExpanded] = useState(false)
+  const [txs, setTxs] = useState<Transaction[] | null>(null)
+  const [loadingTxs, setLoadingTxs] = useState(false)
+
+  const toggleExpand = async () => {
+    if (!expanded && txs === null) {
+      setLoadingTxs(true)
+      const res = await fetch(`/api/transactions?seriesKey=${encodeURIComponent(r.seriesKey)}&isRecurring=true&pageSize=100&sortBy=transactionDate&sortDir=desc`)
+      const data = await res.json()
+      setTxs(data.data || [])
+      setLoadingTxs(false)
+    }
+    setExpanded(v => !v)
+  }
+
   return (
-    <div className="px-4 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-slate-800">{r.name}</span>
-            {r.expectedNextMonth && (
-              <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium">
-                verwacht {formatMonth(nextMonth)}
-              </span>
-            )}
+    <div>
+      <div className="px-4 py-3">
+        <div className="flex items-start gap-3">
+          <button
+            onClick={toggleExpand}
+            className="mt-0.5 shrink-0 p-0.5 text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <ChevronRight size={15} className={clsx('transition-transform', expanded && 'rotate-90')} />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-slate-800">{r.name}</span>
+              {r.expectedNextMonth && (
+                <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium">
+                  verwacht {formatMonth(nextMonth)}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {r.listName && <span className="text-xs text-slate-400">{r.listName}{r.groupName ? ` · ${r.groupName}` : ''}</span>}
+              {r.occurrences > 1 && <span className="text-xs text-slate-400">{r.occurrences}×</span>}
+            </div>
+            <LabelEditor series={r} onSaved={onLabelSaved} />
           </div>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            {r.listName && <span className="text-xs text-slate-400">{r.listName}{r.groupName ? ` · ${r.groupName}` : ''}</span>}
-            {r.occurrences > 1 && <span className="text-xs text-slate-400">{r.occurrences}×</span>}
+          <div className="text-right shrink-0">
+            <div className={clsx('text-sm font-semibold', r.direction === 'income' ? 'text-green-600' : 'text-red-500')}>
+              {r.direction === 'income' ? '+' : ''}{formatEuro(r.amount)}
+            </div>
+            <div className="text-xs text-slate-400">≈ {formatEuro(r.monthlyEquivalent)}/mnd</div>
           </div>
-          <LabelEditor series={r} onSaved={onLabelSaved} />
-        </div>
-        <div className="text-right shrink-0">
-          <div className={clsx('text-sm font-semibold', r.direction === 'income' ? 'text-green-600' : 'text-red-500')}>
-            {r.direction === 'income' ? '+' : ''}{formatEuro(r.amount)}
-          </div>
-          <div className="text-xs text-slate-400">≈ {formatEuro(r.monthlyEquivalent)}/mnd</div>
         </div>
       </div>
+
+      {expanded && (
+        <div className="border-t border-slate-50 bg-slate-50">
+          {loadingTxs && (
+            <div className="px-10 py-3 text-xs text-slate-400">Laden...</div>
+          )}
+          {txs && txs.length === 0 && (
+            <div className="px-10 py-3 text-xs text-slate-400">Geen transacties gevonden.</div>
+          )}
+          {txs && txs.length > 0 && (
+            <div className="divide-y divide-slate-100">
+              {txs.map(tx => (
+                <div key={tx.id} className="flex items-center justify-between px-10 py-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-xs text-slate-400 shrink-0 w-20">{formatDate(tx.transactionDate)}</span>
+                    <span className="text-xs text-slate-600 truncate">{tx.merchant || tx.counterparty || tx.description}</span>
+                  </div>
+                  <span className={clsx(
+                    'text-xs font-medium shrink-0 ml-3',
+                    tx.direction === 'income' ? 'text-green-600' : 'text-red-500'
+                  )}>
+                    {tx.direction === 'income' ? '+' : ''}{formatEuro(Math.abs(tx.amount))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

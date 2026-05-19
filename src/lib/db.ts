@@ -6,13 +6,16 @@ const pool = new Pool({
   max: 10,
 })
 
-let initialized = false
+let initPromise: Promise<void> | null = null
 
 export async function getDb(): Promise<Pool> {
-  if (!initialized) {
-    await initSchema()
-    initialized = true
+  if (!initPromise) {
+    initPromise = initSchema().catch(e => {
+      initPromise = null
+      throw e
+    })
   }
+  await initPromise
   return pool
 }
 
@@ -38,6 +41,15 @@ export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Pr
 }
 
 async function initSchema() {
+  await pool.query('SELECT pg_advisory_lock(987654321)')
+  try {
+    await _runSchema()
+  } finally {
+    await pool.query('SELECT pg_advisory_unlock(987654321)')
+  }
+}
+
+async function _runSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,

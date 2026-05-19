@@ -1,31 +1,59 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { requireAuth } from '@/lib/api-auth'
 
-// $1 is always the userId — each query passes [userId] as params
-const ACCESS = `("accountId" IS NULL OR "accountId" IN (SELECT "accountId" FROM account_members WHERE "userId" = $1))`
-const ACCESS_T = `(t."accountId" IS NULL OR t."accountId" IN (SELECT "accountId" FROM account_members WHERE "userId" = $1))`
+type Scope = 'all' | 'personal' | 'shared'
 
-const EXPENSE_CTE = `
-  WITH expenses AS (
-    SELECT "transactionDate", "listName", "groupName", ABS(amount) as amount
-    FROM transactions
-    WHERE "isDeleted" = false AND direction = 'expense' AND "isSplit" = false AND ${ACCESS}
-    UNION ALL
-    SELECT t."transactionDate", s."listName", s."groupName", s.amount
-    FROM transaction_splits s
-    JOIN transactions t ON t.id = s."transactionId"
-    WHERE t."isDeleted" = false AND t.direction = 'expense' AND ${ACCESS_T}
-  )
-`
+function buildAccess(uid: string, params: unknown[], scope: Scope) {
+  const $uid = () => { params.push(uid); return `$${params.length}` }
+  const uidRef = $uid()
 
-export async function GET() {
+  const typeFilter = scope === 'all'
+    ? ''
+    : ` AND a.type = '${scope === 'personal' ? 'personal' : 'shared'}'`
+
+  const sub = `SELECT am."accountId" FROM account_members am JOIN accounts a ON a.id = am."accountId" WHERE am."userId" = ${uidRef}${typeFilter}`
+
+  const noAccount = scope === 'all' ? `"accountId" IS NULL OR ` : ''
+  const noAccountT = scope === 'all' ? `t."accountId" IS NULL OR ` : ''
+
+  return {
+    ACCESS: `(${noAccount}"accountId" IN (${sub}))`,
+    ACCESS_T: `(${noAccountT}t."accountId" IN (${sub}))`,
+  }
+}
+
+export async function GET(request: NextRequest) {
   const { error, session } = await requireAuth()
   if (error) return error
 
   try {
     const db = await getDb()
     const uid = session.id
+    const scope = (new URL(request.url).searchParams.get('scope') || 'all') as Scope
+
+    const mkAccess = () => { const p: unknown[] = []; return { ...buildAccess(uid, p, scope), p } }
+
+    const q1 = mkAccess()
+    const q2 = mkAccess()
+    const q3 = mkAccess()
+    const q4 = mkAccess()
+    const q5 = mkAccess()
+    const q6 = mkAccess()
+    const q7 = mkAccess()
+
+    const expenseCTE = (ACCESS: string, ACCESS_T: string) => `
+      WITH expenses AS (
+        SELECT "transactionDate", "listName", "groupName", ABS(amount) as amount
+        FROM transactions
+        WHERE "isDeleted" = false AND direction = 'expense' AND "isSplit" = false AND ${ACCESS}
+        UNION ALL
+        SELECT t."transactionDate", s."listName", s."groupName", s.amount
+        FROM transaction_splits s
+        JOIN transactions t ON t.id = s."transactionId"
+        WHERE t."isDeleted" = false AND t.direction = 'expense' AND ${ACCESS_T}
+      )
+    `
 
     const [monthlyStats, expensesByList, expensesByGroup, incomeByList, uncategorizedRes, recurring, topMerchants] =
       await Promise.all([
@@ -39,12 +67,12 @@ export async function GET() {
           FROM transactions
           WHERE "isDeleted" = false AND direction != 'transfer'
             AND "transactionDate" >= (CURRENT_DATE - INTERVAL '12 months')::text
-            AND ${ACCESS}
+            AND ${q1.ACCESS}
           GROUP BY LEFT("transactionDate", 7)
           ORDER BY LEFT("transactionDate", 7) DESC
-        `, [uid]),
+        `, q1.p),
         db.query(`
-          ${EXPENSE_CTE}
+          ${expenseCTE(q2.ACCESS, q2.ACCESS_T)}
           SELECT
             COALESCE("listName", 'Ongecategoriseerd') as "listName",
             SUM(amount) as total,
@@ -53,9 +81,9 @@ export async function GET() {
           WHERE LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
           GROUP BY "listName"
           ORDER BY total DESC
-        `, [uid]),
+        `, q2.p),
         db.query(`
-          ${EXPENSE_CTE}
+          ${expenseCTE(q3.ACCESS, q3.ACCESS_T)}
           SELECT
             COALESCE("listName", 'Ongecategoriseerd') as "listName",
             COALESCE("groupName", '') as "groupName",
@@ -65,7 +93,7 @@ export async function GET() {
           WHERE LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
           GROUP BY "listName", "groupName"
           ORDER BY "listName", total DESC
-        `, [uid]),
+        `, q3.p),
         db.query(`
           SELECT
             COALESCE("listName", 'Ongecategoriseerd') as "listName",
@@ -74,21 +102,21 @@ export async function GET() {
           FROM transactions
           WHERE "isDeleted" = false AND direction = 'income'
             AND LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
-            AND ${ACCESS}
+            AND ${q4.ACCESS}
           GROUP BY "listName"
           ORDER BY total DESC
-        `, [uid]),
+        `, q4.p),
         db.query(`
           SELECT COUNT(*) as count FROM transactions
           WHERE "isDeleted" = false AND "listName" IS NULL AND "isSplit" = false AND direction != 'transfer'
-            AND ${ACCESS}
-        `, [uid]),
+            AND ${q5.ACCESS}
+        `, q5.p),
         db.query(`
           SELECT * FROM transactions
-          WHERE "isDeleted" = false AND "isRecurring" = true AND ${ACCESS}
+          WHERE "isDeleted" = false AND "isRecurring" = true AND ${q6.ACCESS}
           ORDER BY "transactionDate" DESC
           LIMIT 50
-        `, [uid]),
+        `, q6.p),
         db.query(`
           SELECT
             COALESCE(merchant, counterparty, description) as name,
@@ -97,11 +125,11 @@ export async function GET() {
           FROM transactions
           WHERE "isDeleted" = false AND direction = 'expense'
             AND LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
-            AND ${ACCESS}
+            AND ${q7.ACCESS}
           GROUP BY COALESCE(merchant, counterparty, description)
           ORDER BY total DESC
           LIMIT 10
-        `, [uid]),
+        `, q7.p),
       ])
 
     return NextResponse.json({

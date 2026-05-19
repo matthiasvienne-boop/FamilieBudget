@@ -137,16 +137,26 @@ function StatCard({
   )
 }
 
+type Scope = 'all' | 'personal' | 'shared'
+
+const SCOPE_OPTIONS: { value: Scope; label: string; mobileLabel: string }[] = [
+  { value: 'all', label: 'Alle rekeningen', mobileLabel: 'Alle' },
+  { value: 'personal', label: 'Mijn rekeningen', mobileLabel: 'Mijn' },
+  { value: 'shared', label: 'Gemeenschappelijk', mobileLabel: 'Gedeeld' },
+]
+
 export default function DashboardContent() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [scope, setScope] = useState<Scope>('all')
 
   useEffect(() => {
-    fetch('/api/dashboard')
+    setLoading(true)
+    fetch(`/api/dashboard?scope=${scope}`)
       .then(r => r.json())
       .then(setData)
       .finally(() => setLoading(false))
-  }, [])
+  }, [scope])
 
   if (loading) {
     return (
@@ -165,6 +175,25 @@ export default function DashboardContent() {
 
   return (
     <div className="space-y-6">
+      {/* Scope filter */}
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+        {SCOPE_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => setScope(opt.value)}
+            className={clsx(
+              'flex-1 py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition-colors',
+              scope === opt.value
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            )}
+          >
+            <span className="sm:hidden">{opt.mobileLabel}</span>
+            <span className="hidden sm:inline">{opt.label}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Alert: uncategorized */}
       {data.uncategorized > 0 && (
         <Link href="/transactions?uncategorized=true" className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4 hover:bg-amber-100 transition-colors">

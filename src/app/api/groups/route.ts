@@ -4,12 +4,21 @@ import { requireAuth } from '@/lib/api-auth'
 import { v4 as uuidv4 } from 'uuid'
 
 export async function POST(request: NextRequest) {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
     const db = await getDb()
+    const uid = session.id
     const { listId, listName, name } = await request.json()
+
+    // Verify access to parent list
+    const listRes = await db.query('SELECT * FROM transaction_lists WHERE id = $1', [listId])
+    const list = listRes.rows[0] as { userId: string | null } | undefined
+    if (!list) return NextResponse.json({ error: 'List not found' }, { status: 404 })
+    if (list.userId !== null && list.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     if (!listId || !name?.trim()) {
       return NextResponse.json({ error: 'listId and name required' }, { status: 400 })
@@ -34,11 +43,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
     const db = await getDb()
+    const uid = session.id
     const { id, name } = await request.json()
 
     if (!id || !name?.trim()) {
@@ -46,8 +56,16 @@ export async function PATCH(request: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const oldRes = await db.query('SELECT * FROM transaction_groups WHERE id = $1', [id])
-    const old = oldRes.rows[0] as { name: string; listName: string } | undefined
+    const oldRes = await db.query(`
+      SELECT tg.*, tl."userId" as "listUserId"
+      FROM transaction_groups tg
+      JOIN transaction_lists tl ON tl.id = tg."listId"
+      WHERE tg.id = $1`, [id])
+    const old = oldRes.rows[0] as { name: string; listName: string; listUserId: string | null } | undefined
+    if (!old) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (old.listUserId !== null && old.listUserId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     await transaction(async (client) => {
       await client.query('UPDATE transaction_groups SET name = $1, "updatedAt" = $2 WHERE id = $3', [name.trim(), now, id])
@@ -68,18 +86,26 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
     const db = await getDb()
+    const uid = session.id
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-    const groupRes = await db.query('SELECT * FROM transaction_groups WHERE id = $1', [id])
-    const group = groupRes.rows[0] as { name: string; listName: string } | undefined
+    const groupRes = await db.query(`
+      SELECT tg.*, tl."userId" as "listUserId"
+      FROM transaction_groups tg
+      JOIN transaction_lists tl ON tl.id = tg."listId"
+      WHERE tg.id = $1`, [id])
+    const group = groupRes.rows[0] as { name: string; listName: string; listUserId: string | null } | undefined
+    if (group && group.listUserId !== null && group.listUserId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     if (group) {
       await db.query(

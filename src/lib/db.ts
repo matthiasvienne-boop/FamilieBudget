@@ -85,7 +85,8 @@ async function initSchema() {
 
     CREATE TABLE IF NOT EXISTS transaction_lists (
       id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      "userId" TEXT,
       color TEXT,
       "sortOrder" INTEGER NOT NULL DEFAULT 0,
       "createdAt" TEXT NOT NULL,
@@ -101,7 +102,7 @@ async function initSchema() {
       "createdAt" TEXT NOT NULL,
       "updatedAt" TEXT NOT NULL,
       FOREIGN KEY ("listId") REFERENCES transaction_lists(id) ON DELETE CASCADE,
-      UNIQUE("listName", name)
+      UNIQUE("listId", name)
     );
 
     CREATE TABLE IF NOT EXISTS classification_rules (
@@ -246,6 +247,35 @@ async function initSchema() {
       created_at TEXT NOT NULL
     );
   `)
+    // Migrations for existing databases
+    await client.query(`ALTER TABLE transaction_lists ADD COLUMN IF NOT EXISTS "userId" TEXT`)
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'transaction_lists_name_key'
+        ) THEN
+          ALTER TABLE transaction_lists DROP CONSTRAINT transaction_lists_name_key;
+        END IF;
+      END $$;
+    `)
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_lists_name_user
+      ON transaction_lists(name, COALESCE("userId", ''))
+    `)
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'transaction_groups_listname_name_key'
+        ) THEN
+          ALTER TABLE transaction_groups DROP CONSTRAINT "transaction_groups_listname_name_key";
+        END IF;
+      END $$;
+    `)
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_listid_name
+      ON transaction_groups("listId", name)
+    `)
+
     await seedDefaultLists(client)
     await client.query('SELECT pg_advisory_unlock(987654321)')
   } finally {

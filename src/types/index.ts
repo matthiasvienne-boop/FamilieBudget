@@ -59,6 +59,8 @@ export interface Transaction {
   createdAt: string
   updatedAt: string
   rawData: string | null
+  accountName?: string | null
+  accountColor?: string | null
 }
 
 export interface TransactionList {

@@ -30,17 +30,29 @@ export async function GET(request: NextRequest) {
   try {
     const db = await getDb()
     const uid = session.id
-    const scope = (new URL(request.url).searchParams.get('scope') || 'all') as Scope
+    const params = new URL(request.url).searchParams
+    const scope = (params.get('scope') || 'all') as Scope
+    const now = new Date()
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const month = params.get('month') || currentYM
 
-    const mkAccess = () => { const p: unknown[] = []; return { ...buildAccess(uid, p, scope), p } }
+    const mkAccess = (extraParams: unknown[] = []) => {
+      const p: unknown[] = [...extraParams]
+      return { ...buildAccess(uid, p, scope), p }
+    }
 
+    // month param is pushed first for q2-q4, q7 so it becomes $1
     const q1 = mkAccess()
-    const q2 = mkAccess()
-    const q3 = mkAccess()
-    const q4 = mkAccess()
+    const q2 = mkAccess([month])
+    const q3 = mkAccess([month])
+    const q4 = mkAccess([month])
     const q5 = mkAccess()
     const q6 = mkAccess()
-    const q7 = mkAccess()
+    const q7 = mkAccess([month])
+
+    // For q1: show 13 months up to and including the selected month
+    q1.p.push(month)
+    const monthRef1 = `$${q1.p.length}`
 
     const expenseCTE = (ACCESS: string, ACCESS_T: string) => `
       WITH expenses AS (
@@ -66,7 +78,8 @@ export async function GET(request: NextRequest) {
             COUNT(*) as "transactionCount"
           FROM transactions
           WHERE "isDeleted" = false AND direction != 'transfer'
-            AND "transactionDate" >= (CURRENT_DATE - INTERVAL '12 months')::text
+            AND LEFT("transactionDate", 7) <= ${monthRef1}
+            AND LEFT("transactionDate", 7) > TO_CHAR((TO_DATE(${monthRef1}, 'YYYY-MM') - INTERVAL '12 months'), 'YYYY-MM')
             AND ${q1.ACCESS}
           GROUP BY LEFT("transactionDate", 7)
           ORDER BY LEFT("transactionDate", 7) DESC
@@ -78,7 +91,7 @@ export async function GET(request: NextRequest) {
             SUM(amount) as total,
             COUNT(*) as count
           FROM expenses
-          WHERE LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
+          WHERE LEFT("transactionDate", 7) = $1
           GROUP BY "listName"
           ORDER BY total DESC
         `, q2.p),
@@ -90,7 +103,7 @@ export async function GET(request: NextRequest) {
             SUM(amount) as total,
             COUNT(*) as count
           FROM expenses
-          WHERE LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
+          WHERE LEFT("transactionDate", 7) = $1
           GROUP BY "listName", "groupName"
           ORDER BY "listName", total DESC
         `, q3.p),
@@ -101,7 +114,7 @@ export async function GET(request: NextRequest) {
             COUNT(*) as count
           FROM transactions
           WHERE "isDeleted" = false AND direction = 'income'
-            AND LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
+            AND LEFT("transactionDate", 7) = $1
             AND ${q4.ACCESS}
           GROUP BY "listName"
           ORDER BY total DESC
@@ -124,7 +137,7 @@ export async function GET(request: NextRequest) {
             COUNT(*) as count
           FROM transactions
           WHERE "isDeleted" = false AND direction = 'expense'
-            AND LEFT("transactionDate", 7) = LEFT(CURRENT_DATE::text, 7)
+            AND LEFT("transactionDate", 7) = $1
             AND ${q7.ACCESS}
           GROUP BY COALESCE(merchant, counterparty, description)
           ORDER BY total DESC

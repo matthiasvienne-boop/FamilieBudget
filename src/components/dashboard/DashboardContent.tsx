@@ -2,9 +2,20 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { TrendingUp, TrendingDown, ArrowLeftRight, AlertCircle, RefreshCw } from 'lucide-react'
+import { TrendingUp, TrendingDown, ArrowLeftRight, AlertCircle, RefreshCw, ChevronDown } from 'lucide-react'
 import { formatEuro, formatMonth } from '@/lib/utils'
 import clsx from 'clsx'
+
+function getRecentMonths(n: number): { value: string; label: string }[] {
+  const months = []
+  const now = new Date()
+  for (let i = 0; i < n; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    months.push({ value, label: formatMonth(value) })
+  }
+  return months
+}
 
 interface MonthlyStats {
   month: string
@@ -149,14 +160,16 @@ export default function DashboardContent() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [scope, setScope] = useState<Scope>('all')
+  const recentMonths = getRecentMonths(12)
+  const [month, setMonth] = useState(recentMonths[0].value)
 
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/dashboard?scope=${scope}`)
+    fetch(`/api/dashboard?scope=${scope}&month=${month}`)
       .then(r => r.json())
       .then(setData)
       .finally(() => setLoading(false))
-  }, [scope])
+  }, [scope, month])
 
   if (loading) {
     return (
@@ -170,28 +183,45 @@ export default function DashboardContent() {
 
   if (!data) return <div className="text-red-500">Kon dashboard niet laden.</div>
 
-  const currentMonth = data.monthlyStats[0]
-  const prevMonth = data.monthlyStats[1]
+  const selectedStats = data.monthlyStats.find(m => m.month === month) ?? data.monthlyStats[0]
+  const prevMonthValue = recentMonths.find(m => m.value < month)
+  const prevStats = prevMonthValue ? data.monthlyStats.find(m => m.month === prevMonthValue.value) : null
 
   return (
     <div className="space-y-6">
-      {/* Scope filter */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-        {SCOPE_OPTIONS.map(opt => (
-          <button
-            key={opt.value}
-            onClick={() => setScope(opt.value)}
-            className={clsx(
-              'flex-1 py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition-colors',
-              scope === opt.value
-                ? 'bg-white text-slate-800 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            )}
+      {/* Filters row */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        {/* Scope filter */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 flex-1">
+          {SCOPE_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setScope(opt.value)}
+              className={clsx(
+                'flex-1 py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition-colors',
+                scope === opt.value
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              )}
+            >
+              <span className="sm:hidden">{opt.mobileLabel}</span>
+              <span className="hidden sm:inline">{opt.label}</span>
+            </button>
+          ))}
+        </div>
+        {/* Month picker */}
+        <div className="relative">
+          <select
+            value={month}
+            onChange={e => setMonth(e.target.value)}
+            className="appearance-none bg-white border border-slate-200 rounded-xl px-3 py-2 pr-8 text-sm font-medium text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-auto"
           >
-            <span className="sm:hidden">{opt.mobileLabel}</span>
-            <span className="hidden sm:inline">{opt.label}</span>
-          </button>
-        ))}
+            {recentMonths.map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
       </div>
 
       {/* Alert: uncategorized */}
@@ -208,31 +238,29 @@ export default function DashboardContent() {
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <StatCard
-          label="Inkomsten (huidige maand)"
-          mobileLabel="Inkomsten"
-          value={formatEuro(currentMonth?.income ?? 0)}
-          sub={prevMonth ? `vorige: ${formatEuro(prevMonth.income)}` : undefined}
+          label="Inkomsten"
+          value={formatEuro(selectedStats?.income ?? 0)}
+          sub={prevStats ? `vorige: ${formatEuro(prevStats.income)}` : undefined}
           icon={<TrendingUp size={16} className="text-green-600" />}
           color="bg-green-50"
         />
         <StatCard
-          label="Uitgaven (huidige maand)"
-          mobileLabel="Uitgaven"
-          value={formatEuro(currentMonth?.expenses ?? 0)}
-          sub={prevMonth ? `vorige: ${formatEuro(prevMonth.expenses)}` : undefined}
+          label="Uitgaven"
+          value={formatEuro(selectedStats?.expenses ?? 0)}
+          sub={prevStats ? `vorige: ${formatEuro(prevStats.expenses)}` : undefined}
           icon={<TrendingDown size={16} className="text-red-500" />}
           color="bg-red-50"
         />
         <StatCard
           label="Cashflow"
-          value={formatEuro(currentMonth?.cashflow ?? 0)}
-          sub={(currentMonth?.cashflow ?? 0) >= 0 ? 'positief' : 'negatief'}
+          value={formatEuro(selectedStats?.cashflow ?? 0)}
+          sub={(selectedStats?.cashflow ?? 0) >= 0 ? 'positief' : 'negatief'}
           icon={<ArrowLeftRight size={16} className="text-blue-600" />}
           color="bg-blue-50"
         />
         <StatCard
           label="Transacties"
-          value={String(currentMonth?.transactionCount ?? 0)}
+          value={String(selectedStats?.transactionCount ?? 0)}
           sub="deze maand"
           icon={<RefreshCw size={16} className="text-slate-500" />}
           color="bg-slate-50"

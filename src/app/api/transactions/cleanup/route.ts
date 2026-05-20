@@ -12,7 +12,7 @@ export async function POST() {
   const result = await db.query(
     `DELETE FROM transactions
      WHERE "isDeleted" = true
-       AND "updatedAt" < NOW() - INTERVAL '30 days'
+       AND "updatedAt" < TO_CHAR(NOW() - INTERVAL '30 days', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
      RETURNING id`
   )
 

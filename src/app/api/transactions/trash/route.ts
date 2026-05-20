@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
      FROM transactions t
      LEFT JOIN accounts a ON a.id = t."accountId"
      WHERE t."isDeleted" = true
-       AND t."updatedAt" >= NOW() - INTERVAL '30 days'
+       AND t."updatedAt" >= TO_CHAR(NOW() - INTERVAL '30 days', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
        AND (t."accountId" IS NULL OR t."accountId" IN (
          SELECT "accountId" FROM account_members WHERE "userId" = $1
        ))
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   const countResult = await db.query(
     `SELECT COUNT(*) as total FROM transactions t
      WHERE t."isDeleted" = true
-       AND t."updatedAt" >= NOW() - INTERVAL '30 days'
+       AND t."updatedAt" >= TO_CHAR(NOW() - INTERVAL '30 days', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
        AND (t."accountId" IS NULL OR t."accountId" IN (
          SELECT "accountId" FROM account_members WHERE "userId" = $1
        ))`,

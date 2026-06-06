@@ -280,6 +280,21 @@ async function initSchema() {
     await client.query(`ALTER TABLE transaction_groups ADD COLUMN IF NOT EXISTS "userId" TEXT`)
     await client.query(`ALTER TABLE classification_rules ADD COLUMN IF NOT EXISTS "accountId" TEXT`)
 
+    await client.query(`ALTER TABLE budget_goals ADD COLUMN IF NOT EXISTS "userId" TEXT REFERENCES users(id)`)
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'budget_goals_listname_groupname_month_key'
+        ) THEN
+          ALTER TABLE budget_goals DROP CONSTRAINT "budget_goals_listname_groupname_month_key";
+        END IF;
+      END $$;
+    `)
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_budget_goals_unique
+      ON budget_goals("listName", "groupName", month, COALESCE("userId", ''))
+    `)
+
     await seedDefaultLists(client)
     await client.query('SELECT pg_advisory_unlock(987654321)')
   } finally {

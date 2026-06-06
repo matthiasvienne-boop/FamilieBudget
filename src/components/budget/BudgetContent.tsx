@@ -15,6 +15,7 @@ interface Goal {
   goalAmount: number
   direction: string
   period: 'month' | 'year'
+  userId: string | null
 }
 
 interface HistoryRow {
@@ -107,10 +108,12 @@ function CategoryRow({
   cat,
   onSaveGoal,
   onDrilldown,
+  isPersonal,
 }: {
   cat: CategoryData
-  onSaveGoal: (listName: string, amount: number | null, period: 'month' | 'year') => Promise<void>
+  onSaveGoal: (listName: string, amount: number | null, period: 'month' | 'year', isPersonal: boolean) => Promise<void>
   onDrilldown: (listName: string, month: string) => void
+  isPersonal: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [inputVal, setInputVal] = useState(String(cat.goal ?? ''))
@@ -124,7 +127,7 @@ function CategoryRow({
   const handleSave = async () => {
     setSaving(true)
     const amount = parseFloat(inputVal.replace(',', '.'))
-    await onSaveGoal(cat.listName, isNaN(amount) ? null : amount, periodVal)
+    await onSaveGoal(cat.listName, isNaN(amount) ? null : amount, periodVal, isPersonal)
     setSaving(false)
     setEditing(false)
   }
@@ -239,10 +242,14 @@ export default function BudgetContent() {
   const [loading, setLoading] = useState(true)
   const [drilldown, setDrilldown] = useState<DrilldownState | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<'gezamenlijk' | 'persoonlijk'>('gezamenlijk')
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [newPersonalCategory, setNewPersonalCategory] = useState('')
 
   const load = useCallback(async () => {
     const res = await fetch('/api/goals')
     const data = await res.json()
+    setCurrentUserId(data.currentUserId ?? null)
     setGoals(data.goals)
     setHistory(data.history)
     setCurrentMonth(data.currentMonth)
@@ -300,12 +307,12 @@ export default function BudgetContent() {
     setDrilldown(prev => prev ? { ...prev, txRows, txLoading: false } : prev)
   }, [drilldown])
 
-  const handleSaveGoal = async (listName: string, amount: number | null) => {
+  const handleSaveGoal = async (listName: string, amount: number | null, period: 'month' | 'year' = 'month', isPersonal = false) => {
     if (amount == null) return
     await fetch('/api/goals', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ listName, goalAmount: amount, direction: 'expense' }),
+      body: JSON.stringify({ listName, goalAmount: amount, direction: 'expense', period, isPersonal }),
     })
     await load()
   }
@@ -320,13 +327,21 @@ export default function BudgetContent() {
     )
   }
 
-  // Build category data
+  // Build category data filtered by active tab
+  const tabGoals = goals.filter(g =>
+    activeTab === 'gezamenlijk' ? g.userId === null : g.userId === currentUserId
+  )
+
   const listsInHistory = [...new Set(history.map(h => h.listName))]
   const listsInCurrent = currentMonth.map(c => c.listName)
-  const allLists = [...new Set([...listsInHistory, ...listsInCurrent, ...goals.map(g => g.listName)])]
+
+  // Voor gezamenlijk: alle lijsten; voor persoonlijk: alleen lijsten met een doel van de user
+  const allLists = activeTab === 'gezamenlijk'
+    ? [...new Set([...listsInHistory, ...listsInCurrent, ...tabGoals.map(g => g.listName)])]
+    : [...new Set(tabGoals.map(g => g.listName))]
 
   const categories: CategoryData[] = allLists.map(listName => {
-    const goal = goals.find(g => g.listName === listName && !g.groupName && !g.month)
+    const goal = tabGoals.find(g => g.listName === listName && !g.groupName && !g.month)
     const isYearly = goal?.period === 'year'
     const actualSource = isYearly ? currentYear : currentMonth
     const actual = actualSource
@@ -361,6 +376,28 @@ export default function BudgetContent() {
 
   return (
     <div className="space-y-6">
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('gezamenlijk')}
+          className={clsx(
+            'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+            activeTab === 'gezamenlijk' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          )}
+        >
+          Gezamenlijk
+        </button>
+        <button
+          onClick={() => setActiveTab('persoonlijk')}
+          className={clsx(
+            'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+            activeTab === 'persoonlijk' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          )}
+        >
+          Persoonlijk
+        </button>
+      </div>
+
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
@@ -393,16 +430,62 @@ export default function BudgetContent() {
       <div>
         <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3">Categorieën</h2>
         <div className="space-y-3">
+          {categories.length === 0 && activeTab === 'persoonlijk' && (
+            <p className="text-slate-400 text-sm text-center py-8">
+              Nog geen persoonlijke budgetcategorieën. Voeg er een toe hieronder.
+            </p>
+          )}
           {categories.map(cat => (
-            <CategoryRow key={cat.listName} cat={cat} onSaveGoal={handleSaveGoal} onDrilldown={handleDrilldown} />
+            <CategoryRow
+              key={cat.listName}
+              cat={cat}
+              onSaveGoal={handleSaveGoal}
+              onDrilldown={handleDrilldown}
+              isPersonal={activeTab === 'persoonlijk'}
+            />
           ))}
-          {categories.length === 0 && (
+          {categories.length === 0 && activeTab === 'gezamenlijk' && (
             <p className="text-slate-400 text-sm text-center py-8">
               Nog geen gecategoriseerde transacties gevonden.
             </p>
           )}
         </div>
       </div>
+
+      {/* Nieuwe persoonlijke categorie */}
+      {activeTab === 'persoonlijk' && (
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Nieuwe persoonlijke categorie</h3>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newPersonalCategory}
+              onChange={e => setNewPersonalCategory(e.target.value)}
+              placeholder="bv. Kleren, Uit eten, Hobby..."
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              onKeyDown={async e => {
+                if (e.key === 'Enter' && newPersonalCategory.trim()) {
+                  await handleSaveGoal(newPersonalCategory.trim(), 0, 'month', true)
+                  setNewPersonalCategory('')
+                }
+              }}
+            />
+            <button
+              onClick={async () => {
+                if (!newPersonalCategory.trim()) return
+                await handleSaveGoal(newPersonalCategory.trim(), 0, 'month', true)
+                setNewPersonalCategory('')
+              }}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+            >
+              Toevoegen
+            </button>
+          </div>
+          <p className="text-xs text-slate-400 mt-2">
+            Maak een persoonlijk budgetcategorie aan. Stel daarna een bedrag in via &quot;+ Doel instellen&quot;.
+          </p>
+        </div>
+      )}
 
       {/* Drilldown modal */}
       {drilldown && (

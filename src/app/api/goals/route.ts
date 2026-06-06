@@ -28,7 +28,7 @@ export async function GET() {
     const uid = session.id
 
     const [goalsRes, historyRes, currentMonthRes, currentYearRes] = await Promise.all([
-      db.query(`SELECT id, "listName", "groupName", month, "goalAmount", direction, COALESCE(period, 'month') as period FROM budget_goals ORDER BY "listName", "groupName"`),
+      db.query(`SELECT id, "listName", "groupName", month, "goalAmount", direction, COALESCE(period, 'month') as period, "userId" FROM budget_goals WHERE "userId" IS NULL OR "userId" = $1 ORDER BY "listName", "groupName"`, [uid]),
       db.query(`
         ${EXPENSE_CTE}
         SELECT
@@ -68,6 +68,7 @@ export async function GET() {
       history: historyRes.rows,
       currentMonth: currentMonthRes.rows,
       currentYear: currentYearRes.rows,
+      currentUserId: uid,
     })
   } catch (error) {
     console.error(error)
@@ -76,12 +77,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { error } = await requireAuth()
+  const { error, session } = await requireAuth()
   if (error) return error
 
   try {
     const db = await getDb()
-    const { listName, groupName, month, goalAmount, direction, period } = await request.json()
+    const { listName, groupName, month, goalAmount, direction, period, isPersonal } = await request.json()
 
     if (!listName || goalAmount == null) {
       return NextResponse.json({ error: 'listName en goalAmount zijn verplicht' }, { status: 400 })
@@ -89,13 +90,14 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString()
     const id = uuidv4()
+    const userId = isPersonal === true ? session.id : null
 
     await db.query(`
-      INSERT INTO budget_goals (id, "listName", "groupName", month, "goalAmount", direction, period, "createdAt", "updatedAt")
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-      ON CONFLICT ("listName", "groupName", month)
+      INSERT INTO budget_goals (id, "listName", "groupName", month, "goalAmount", direction, period, "userId", "createdAt", "updatedAt")
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      ON CONFLICT ("listName", "groupName", month, COALESCE("userId", ''))
       DO UPDATE SET "goalAmount" = EXCLUDED."goalAmount", period = EXCLUDED.period, "updatedAt" = EXCLUDED."updatedAt"
-    `, [id, listName, groupName || '', month || '', goalAmount, direction || 'expense', period || 'month', now, now])
+    `, [id, listName, groupName || '', month || '', goalAmount, direction || 'expense', period || 'month', userId, now, now])
 
     return NextResponse.json({ success: true })
   } catch (error) {

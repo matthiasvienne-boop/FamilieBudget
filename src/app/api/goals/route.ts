@@ -99,6 +99,21 @@ export async function POST(request: NextRequest) {
       DO UPDATE SET "goalAmount" = EXCLUDED."goalAmount", period = EXCLUDED.period, "updatedAt" = EXCLUDED."updatedAt"
     `, [id, listName, groupName || '', month || '', goalAmount, direction || 'expense', period || 'month', userId, now, now])
 
+    if (isPersonal === true) {
+      const existsRes = await db.query(
+        `SELECT id FROM transaction_lists WHERE name = $1 AND "userId" = $2`,
+        [listName, session.id]
+      )
+      if (existsRes.rows.length === 0) {
+        const maxRes = await db.query('SELECT MAX("sortOrder") as m FROM transaction_lists')
+        const maxOrder = (maxRes.rows[0].m as number | null) ?? -1
+        await db.query(
+          `INSERT INTO transaction_lists (id, name, "userId", color, "sortOrder", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [uuidv4(), listName, session.id, null, maxOrder + 1, now, now]
+        )
+      }
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error(error)

@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { formatEuro, formatMonth } from '@/lib/utils'
 import clsx from 'clsx'
-import { BarChart2, Check, X, ChevronUp } from 'lucide-react'
+import { BarChart2, Check, X, ChevronUp, Trash2 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
-import { Transaction } from '@/types'
+import { Transaction, TransactionList } from '@/types'
 
 interface Goal {
   id: string
@@ -36,6 +36,7 @@ interface CategoryData {
   goal: number | null
   goalId: string | null
   goalPeriod: 'month' | 'year'
+  listId: string | null
   actual: number
   history: { month: string; total: number }[]
   avg: number
@@ -108,11 +109,13 @@ function CategoryRow({
   cat,
   onSaveGoal,
   onDrilldown,
+  onDelete,
   isPersonal,
 }: {
   cat: CategoryData
   onSaveGoal: (listName: string, amount: number | null, period: 'month' | 'year', isPersonal: boolean) => Promise<void>
   onDrilldown: (listName: string, month: string) => void
+  onDelete: (goalId: string, listId: string | null) => void
   isPersonal: boolean
 }) {
   const [editing, setEditing] = useState(false)
@@ -161,6 +164,15 @@ function CategoryRow({
             >
               <BarChart2 size={14} />
             </button>
+            {cat.goalId && (
+              <button
+                onClick={() => onDelete(cat.goalId!, cat.listId)}
+                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
+                title="Verwijderen"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -239,6 +251,7 @@ export default function BudgetContent() {
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [currentMonth, setCurrentMonth] = useState<CurrentRow[]>([])
   const [currentYear, setCurrentYear] = useState<CurrentRow[]>([])
+  const [lists, setLists] = useState<TransactionList[]>([])
   const [loading, setLoading] = useState(true)
   const [drilldown, setDrilldown] = useState<DrilldownState | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
@@ -247,13 +260,15 @@ export default function BudgetContent() {
   const [newPersonalCategory, setNewPersonalCategory] = useState('')
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/goals')
-    const data = await res.json()
+    const [goalsRes, listsRes] = await Promise.all([fetch('/api/goals'), fetch('/api/lists')])
+    const data = await goalsRes.json()
+    const listsData = await listsRes.json()
     setCurrentUserId(data.currentUserId ?? null)
     setGoals(data.goals)
     setHistory(data.history)
     setCurrentMonth(data.currentMonth)
     setCurrentYear(data.currentYear ?? [])
+    setLists(listsData.lists ?? [])
     setLoading(false)
   }, [])
 
@@ -317,6 +332,18 @@ export default function BudgetContent() {
     await load()
   }
 
+  const handleDeleteGoal = async (goalId: string, listId: string | null) => {
+    if (!confirm('Wil je deze budgetcategorie verwijderen?')) return
+    const calls: Promise<unknown>[] = [
+      fetch(`/api/goals?id=${goalId}`, { method: 'DELETE' }),
+    ]
+    if (listId) {
+      calls.push(fetch(`/api/lists?id=${listId}`, { method: 'DELETE' }))
+    }
+    await Promise.all(calls)
+    await load()
+  }
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -357,11 +384,16 @@ export default function BudgetContent() {
       ? listHistory.reduce((s, h) => s + h.total, 0) / listHistory.length
       : 0
 
+    const personalList = activeTab === 'persoonlijk'
+      ? lists.find(l => l.name === listName && l.userId === currentUserId)
+      : null
+
     return {
       listName,
       goal: goal?.goalAmount ?? null,
       goalId: goal?.id ?? null,
       goalPeriod: goal?.period ?? 'month',
+      listId: personalList?.id ?? null,
       actual,
       history: listHistory,
       avg,
@@ -441,6 +473,7 @@ export default function BudgetContent() {
               cat={cat}
               onSaveGoal={handleSaveGoal}
               onDrilldown={handleDrilldown}
+              onDelete={handleDeleteGoal}
               isPersonal={activeTab === 'persoonlijk'}
             />
           ))}
